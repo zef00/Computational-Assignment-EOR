@@ -102,5 +102,5 @@ ggplot(bootstrap_lambda_df, aes(x = lambda)) +
        x = "Lambda (Average Daily Arrivals)", y = "Density") +
   theme_minimal()
 
-testtestest
+#dit is testtestest
   
