@@ -7,8 +7,8 @@ library(zoo)
 #Datasets
 ScanRecords <- read.csv("ScanRecords.csv")
 ScanRecords$Date <- as.Date(ScanRecords$Date)
-Type1 <- filter(ScanRecords, PatientType=="Type 1")
-Type2 <- filter(ScanRecords, PatientType=="Type 2")
+Type1 <- dplyr::filter(ScanRecords, PatientType=="Type 1") #Ik moest dplyr:: toevoegen want hij had een conflict met een ander package
+Type2 <- dplyr::filter(ScanRecords, PatientType=="Type 2") #Ik moest dplyr:: toevoegen want hij had een conflict met een ander package
 
 #Duration Scatterplot 
 ggplot(ScanRecords, aes(x=1:618, y=Duration, color = PatientType))+
@@ -62,5 +62,45 @@ ggplot() +
   theme_minimal() +
   theme(legend.position = "top") +
   scale_x_continuous(breaks = 0:max_count)
+
+
+# ARRIVAL TIMES TYPE 1 patient
+# Count daily arrivals for Type 1
+daily_arrivals_type1 <- Type1 %>%
+  group_by(Date) %>%
+  summarise(daily_count = n())
+
+# Calculate mean arrival rate (lambda) for Poisson distribution
+lambda_type1 <- mean(daily_arrivals_type1$daily_count)
+
+# Parametric Bootstrap to estimate uncertainty for lambda
+bootstrap_lambda <- replicate(1000, {
+  sample_counts <- rpois(n = nrow(daily_arrivals_type1), lambda = lambda_type1)
+  mean(sample_counts)
+})
+
+# Create a data frame for the bootstrapped lambdas
+bootstrap_lambda_df <- data.frame(lambda = bootstrap_lambda)
+
+# Calculate the mean of the bootstrap lambdas
+mean_lambda <- mean(bootstrap_lambda)
+
+# Calculate 95% confidence interval for bootstrap lambda values
+lambda_ci <- quantile(bootstrap_lambda_df$lambda, probs = c(0.025, 0.975))
+
+# Plot the distribution of bootstrap lambda values with mean and confidence interval lines
+ggplot(bootstrap_lambda_df, aes(x = lambda)) +
+  geom_density(fill = "lightblue", alpha = 0.5) +             # Density plot of bootstrap lambdas
+  geom_vline(xintercept = mean_lambda, color = "red",         # Line at mean lambda
+             linetype = "dashed", size = 1) +
+  geom_vline(xintercept = lambda_ci[1], color = "blue",       # Lower bound of CI
+             linetype = "dotted", size = 1) +
+  geom_vline(xintercept = lambda_ci[2], color = "blue",       # Upper bound of CI
+             linetype = "dotted", size = 1) +
+  labs(title = "Distribution of Bootstrapped Lambda Estimates for Type 1 Daily Arrivals",
+       subtitle = paste("95% CI:", round(lambda_ci[1], 2), "-", round(lambda_ci[2], 2)),
+       x = "Lambda (Average Daily Arrivals)", y = "Density") +
+  theme_minimal()
+
 
   
