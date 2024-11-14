@@ -103,4 +103,4 @@ ggplot(bootstrap_lambda_df, aes(x = lambda)) +
   theme_minimal()
 
 #dit is testtestest
-  
+#dfsdklfjsd
