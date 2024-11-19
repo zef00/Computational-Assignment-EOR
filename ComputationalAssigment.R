@@ -1,6 +1,6 @@
-
+rm(list=ls())
 library(ggplot2)
-library(lubridate)
+library(MASS)
 library(tidyverse)
 library(zoo)
 
@@ -23,59 +23,56 @@ pdf2 <- dnorm(Type2$Duration, mean=mean(Type2$Duration), sd = sd(Type2$Duration)
 plot(Type2$Duration, pdf2)
 
 #Arrival time/Poisson Process 
-# For now this only gives the PMF and lambda for both patienttypes together, we
-# should still use bootstrap to estimate the lambda and do it also per patientype. 
+  #Only for patienttype 1 
 
-# Step 1: Create a timestamp by combining Date and Time, then round to hourly intervals
-ScanRecords <- ScanRecords %>%
-  mutate(timestamp = as.POSIXct(Date) + dhours(Time),   # Combine Date and Time
-         hour = floor_date(timestamp, "hour"))          # Round to hourly intervals
+# Step 1: Round the data to get hourly data (we could change this to get daily or half hour intervals)
+ScanRecords$Time <- round(ScanRecords$Time) 
 
 # Step 2: Count the number of arrivals per hour per day
 hourly_counts <- ScanRecords %>%
-  group_by(Date, PatientType, hour) %>%
+  group_by(Date, PatientType, Time) %>%
   summarise(count = n()) %>%
   ungroup()
 
-# Step 3: Calculate the mean arrival rate (lambda) per hour
-lambda <- mean(hourly_counts$count)
+# Step 3: Calculate the mean arrival rate (lambda) per hour for patientype 1
+hourly_counts1 <- dplyr::filter(hourly_counts, PatientType=="Type 1")
+lambda_type1_hourly <- mean(hourly_counts1$count) 
 
 # Step 4: Create the observed PMF by calculating the frequency of each count value
-observed_pmf <- hourly_counts %>%
+observed_pmf1 <- hourly_counts1 %>%
   count(count) %>%
   mutate(prob = n / sum(n))
 
 # Step 5: Generate the theoretical Poisson PMF based on the mean arrival rate
 # Generate the counts we observed (unique arrival values)
-max_count <- max(hourly_counts$count)
-theoretical_pmf <- data.frame(
+max_count <- max(hourly_counts1$count)
+theoretical_pmf1 <- data.frame(
   count = 0:max_count,
-  prob = dpois(0:max_count, lambda)
+  prob = dpois(0:max_count, lambda_type1_hourly)
 )
 
 # Step 6: Plot the observed PMF and overlay the theoretical Poisson PMF
 ggplot() +
-  geom_bar(data = observed_pmf, aes(x = count, y = prob), stat = "identity", fill = "skyblue", alpha = 0.6, width = 0.8) +
-  geom_line(data = theoretical_pmf, aes(x = count, y = prob), color = "red", size = 1.2) +
-  geom_point(data = theoretical_pmf, aes(x = count, y = prob), color = "red", size = 2) +
-  labs(x = "Number of Arrivals per Hour", y = "Probability", title = "Probability Mass Function of Arrival Times per Hour") +
+  geom_bar(data = observed_pmf1, aes(x = count, y = prob), stat = "identity", fill = "skyblue", alpha = 0.6, width = 0.8) +
+  geom_line(data = theoretical_pmf1, aes(x = count, y = prob), color = "red", size = 1.2) +
+  geom_point(data = theoretical_pmf1, aes(x = count, y = prob), color = "red", size = 2) +
+  labs(x = "Number of Arrivals per Hour", y = "Probability", title = "Probability Mass Function of Arrival Times per Hour (Patienttype 1)") +
   theme_minimal() +
   theme(legend.position = "top") +
   scale_x_continuous(breaks = 0:max_count)
 
-
-# ARRIVAL TIMES TYPE 1 patient
+# ARRIVAL TIMES TYPE 1 patient (daily)
 # Count daily arrivals for Type 1
 daily_arrivals_type1 <- Type1 %>%
   group_by(Date) %>%
   summarise(daily_count = n())
 
 # Calculate mean arrival rate (lambda) for Poisson distribution
-lambda_type1 <- mean(daily_arrivals_type1$daily_count)
+lambda_type1_daily <- mean(daily_arrivals_type1$daily_count)
 
 # Parametric Bootstrap to estimate uncertainty for lambda
 bootstrap_lambda <- replicate(1000, {
-  sample_counts <- rpois(n = nrow(daily_arrivals_type1), lambda = lambda_type1)
+  sample_counts <- rpois(n = nrow(daily_arrivals_type1), lambda = lambda_type1_daily)
   mean(sample_counts)
 })
 
