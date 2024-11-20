@@ -16,11 +16,42 @@ ggplot(ScanRecords, aes(x=1:618, y=Duration, color = PatientType))+
   geom_hline(yintercept = mean(Type1$Duration), color = "red") +
   geom_hline(yintercept = mean(Type2$Duration), color = "blue")
 
+#Duration Histogram
+ggplot(Type1) + 
+  geom_histogram(aes(x = Duration))
+ggplot(Type2) + 
+  geom_histogram(aes(x = Duration))
+
+#Duration qqplots
+qqnorm(Type1$Duration) #This suggests a normal distribution
+qqnorm(Type2$Duration) #This one is bit wierd 
+
 #Duration Normal Distribution PDF plot
 pdf1 <- dnorm(Type1$Duration, mean=mean(Type1$Duration), sd = sd(Type1$Duration))
 plot(Type1$Duration, pdf1)
 pdf2 <- dnorm(Type2$Duration, mean=mean(Type2$Duration), sd = sd(Type2$Duration))
 plot(Type2$Duration, pdf2)
+
+#Bootstrapping the mean duration for type 2 
+X <- Type2$Duration
+B <- 1000                     
+
+n <- length(X)                                          # Sample size
+X.bar <- mean(X)                                        # Sample mean of X
+St.Dev <- sd(X)                                         # Standard deviation of X
+
+X.star_mean <- rep(NA, n)
+X.star_sd <- rep(NA,n)
+
+for (b in 1:B) {
+  J <- sample(n, size = n, replace = TRUE)            # Draw the indices J
+  X.star <- X[J]                                      # Draw the bootstrap sample
+  X.star_mean[b] <- mean(X.star) 
+  X.star_sd[b] <- sd(X.star)
+}
+
+mean_duration_type2 <- mean(X.star_mean) #these are the variables of interest to us
+SD_duration_type2 <- mean(X.star_sd)
 
 #Arrival time/Poisson Process 
   #Only for patienttype 1 
