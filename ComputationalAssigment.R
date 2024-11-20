@@ -44,7 +44,7 @@ X.star_mean <- rep(NA, n)
 X.star_sd <- rep(NA,n)
 
 for (b in 1:B) {
-  J <- sample(n, size = n, replace = TRUE)            # Draw the indices J
+  J <- sample.int(n, size = n, replace = TRUE)            # Draw the indices J
   X.star <- X[J]                                      # Draw the bootstrap sample
   X.star_mean[b] <- mean(X.star) 
   X.star_sd[b] <- sd(X.star)
@@ -52,6 +52,25 @@ for (b in 1:B) {
 
 mean_duration_type2 <- mean(X.star_mean) #these are the variables of interest to us
 SD_duration_type2 <- mean(X.star_sd)
+
+# Monte Carlo Study for the type 2 bootstrap mean (this can take long)
+N = 2000
+B = 500 
+bias = rep(NA, N)
+for (i in 1:N){
+  mc_type2_duration <- rnorm(length(Type2$Duration),
+                             mean = mean_duration_type2,
+                             sd = SD_duration_type2)
+  X.star_mean <- rep(NA, length(Type2$Duration))
+  for (b in 1:B){
+    J <- sample.int(length(Type2$Duration), size = length(Type2$Duration), replace = TRUE)
+    X.star <- mc_type2_duration[J]                                      # Draw the bootstrap sample
+    X.star_mean[b] <- mean(X.star) 
+  }
+  MCbootstrap_mean <- mean(X.star_mean)
+  bias[i] <- MCbootstrap_mean - mean(mc_type2_duration)
+}
+avg_bias = mean(bias) #very low so should be good 
 
 #Arrival time/Poisson Process 
   #Only for patienttype 1 
