@@ -7,8 +7,9 @@ library(zoo)
 #Datasets
 ScanRecords <- read.csv("ScanRecords.csv")
 ScanRecords$Date <- as.Date(ScanRecords$Date)
-Type1 <- dplyr::filter(ScanRecords, PatientType=="Type 1") #Ik moest dplyr:: toevoegen want hij had een conflict met een ander package
-Type2 <- dplyr::filter(ScanRecords, PatientType=="Type 2") #Ik moest dplyr:: toevoegen want hij had een conflict met een ander package
+Type1 <- dplyr::filter(ScanRecords, PatientType=="Type 1") 
+Type2 <- dplyr::filter(ScanRecords, PatientType=="Type 2") 
+
 
 #Duration Scatterplot 
 ggplot(ScanRecords, aes(x=1:618, y=Duration, color = PatientType))+
@@ -23,8 +24,8 @@ ggplot(Type2) +
   geom_histogram(aes(x = Duration))
 
 #Duration qqplots
-qqnorm(Type1$Duration) #This suggests a normal distribution
-qqnorm(Type2$Duration) #This one is bit wierd 
+qqnorm(Type1$Duration) #This suggests a normal distribution, which corresponds to the information given
+qqnorm(Type2$Duration) #This one is bit weird 
 
 #Duration Normal Distribution PDF plot
 pdf1 <- dnorm(Type1$Duration, mean=mean(Type1$Duration), sd = sd(Type1$Duration))
@@ -34,7 +35,7 @@ plot(Type2$Duration, pdf2)
 
 #Bootstrapping the mean duration for type 2 
 X <- Type2$Duration
-B <- 1000                     
+B <- 1000 
 
 n <- length(X)                                          # Sample size
 X.bar <- mean(X)                                        # Sample mean of X
@@ -72,84 +73,60 @@ for (i in 1:N){
 }
 avg_bias = mean(bias) #very low so should be good 
 
-#Arrival time/Poisson Process 
-  #Only for patienttype 1 
 
-# Step 1: Round the data to get hourly data (we could change this to get daily or half hour intervals)
-ScanRecords$Time <- round(ScanRecords$Time) 
+## BOOTSTRAP patient 1 arrival times with interarival times
 
-# Step 2: Count the number of arrivals per hour per day
-hourly_counts <- ScanRecords %>%
-  group_by(Date, PatientType, Time) %>%
-  summarise(count = n()) %>%
+# Calculate inter-arrival times
+Type1 <- Type1 %>%
+  group_by(Date) %>%
+  mutate(
+    InterArrivalTime = Time - lag(Time),  # Standard inter-arrival time within the same day
+    FirstOfDay = row_number() == 1        # Flag for the first record of the day
+  ) %>%
   ungroup()
 
-# Step 3: Calculate the mean arrival rate (lambda) per hour for patientype 1
-hourly_counts1 <- dplyr::filter(hourly_counts, PatientType=="Type 1")
-lambda_type1_hourly <- mean(hourly_counts1$count) 
+# Handle first times of each day
+Type1 <- Type1 %>%
+  mutate(
+    InterArrivalTime = ifelse(
+      FirstOfDay,
+      # If first record of the day, calculate time difference with lagged time + 9 hours (17,00 - 8,00 = 9,00)
+      Time - lag(Time) + 9,
+      InterArrivalTime
+    )
+  )
 
-# Step 4: Create the observed PMF by calculating the frequency of each count value
-observed_pmf1 <- hourly_counts1 %>%
-  count(count) %>%
-  mutate(prob = n / sum(n))
+# Remove remaining NA values (the first time of the first day)
+InterArrivalTimes <- Type1$InterArrivalTime[!is.na(Type1$InterArrivalTime)]
 
-# Step 5: Generate the theoretical Poisson PMF based on the mean arrival rate
-# Generate the counts we observed (unique arrival values)
-max_count <- max(hourly_counts1$count)
-theoretical_pmf1 <- data.frame(
-  count = 0:max_count,
-  prob = dpois(0:max_count, lambda_type1_hourly)
-)
+# Calculate rate parameter for exponential distribution
+lambda <- 1 / mean(InterArrivalTimes)
 
-# Step 6: Plot the observed PMF and overlay the theoretical Poisson PMF
-ggplot() +
-  geom_bar(data = observed_pmf1, aes(x = count, y = prob), stat = "identity", fill = "skyblue", alpha = 0.6, width = 0.8) +
-  geom_line(data = theoretical_pmf1, aes(x = count, y = prob), color = "red", size = 1.2) +
-  geom_point(data = theoretical_pmf1, aes(x = count, y = prob), color = "red", size = 2) +
-  labs(x = "Number of Arrivals per Hour", y = "Probability", title = "Probability Mass Function of Arrival Times per Hour (Patienttype 1)") +
-  theme_minimal() +
-  theme(legend.position = "top") +
-  scale_x_continuous(breaks = 0:max_count)
+# Perform bootstrapping based on exponential distribution
+B <- 10000  # Number of bootstrap samples
+bootstrap_means <- numeric(B)
 
-# ARRIVAL TIMES TYPE 1 patient (daily)
-# Count daily arrivals for Type 1
-daily_arrivals_type1 <- Type1 %>%
-  group_by(Date) %>%
-  summarise(daily_count = n())
+for (b in seq_len(B)) {
+  # Generate bootstrap sample from exponential distribution
+  bootstrap_sample <- rexp(length(InterArrivalTimes), rate = lambda)
+  bootstrap_means[b] <- mean(bootstrap_sample)
+}
 
-# Calculate mean arrival rate (lambda) for Poisson distribution
-lambda_type1_daily <- mean(daily_arrivals_type1$daily_count)
+# Calculate bootstrapped mean and 95% confidence interval
+bootstrapped_mean <- mean(bootstrap_means)
+ci <- quantile(bootstrap_means, probs = c(0.025, 0.975))
 
-# Parametric Bootstrap to estimate uncertainty for lambda
-bootstrap_lambda <- replicate(1000, {
-  sample_counts <- rpois(n = nrow(daily_arrivals_type1), lambda = lambda_type1_daily)
-  mean(sample_counts)
-})
+# Print results
+cat("Bootstrapped Mean Inter-Arrival Time (Exponential):", bootstrapped_mean, "\n")
+cat("95% Confidence Interval for Mean Inter-Arrival Time (Exponential):", ci, "\n")
 
-# Create a data frame for the bootstrapped lambdas
-bootstrap_lambda_df <- data.frame(lambda = bootstrap_lambda)
-
-# Calculate the mean of the bootstrap lambdas
-mean_lambda <- mean(bootstrap_lambda)
-
-# Calculate 95% confidence interval for bootstrap lambda values
-lambda_ci <- quantile(bootstrap_lambda_df$lambda, probs = c(0.025, 0.975))
-
-# Plot the distribution of bootstrap lambda values with mean and confidence interval lines
-ggplot(bootstrap_lambda_df, aes(x = lambda)) +
-  geom_density(fill = "lightblue", alpha = 0.5) +             # Density plot of bootstrap lambdas
-  geom_vline(xintercept = mean_lambda, color = "red",         # Line at mean lambda
-             linetype = "dashed", size = 1) +
-  geom_vline(xintercept = lambda_ci[1], color = "blue",       # Lower bound of CI
-             linetype = "dotted", size = 1) +
-  geom_vline(xintercept = lambda_ci[2], color = "blue",       # Upper bound of CI
-             linetype = "dotted", size = 1) +
-  labs(title = "Distribution of Bootstrapped Lambda Estimates for Type 1 Daily Arrivals",
-       subtitle = paste("95% CI:", round(lambda_ci[1], 2), "-", round(lambda_ci[2], 2)),
-       x = "Lambda (Average Daily Arrivals)", y = "Density") +
+# Plot the bootstrap distribution
+ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) +
+  geom_density(fill = "lightblue", alpha = 0.5) +
+  geom_vline(xintercept = bootstrapped_mean, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = ci[1], color = "blue", linetype = "dotted") +
+  geom_vline(xintercept = ci[2], color = "blue", linetype = "dotted") +
+  labs(title = "Bootstrap Distribution of Mean Inter-Arrival Time (Exponential)",
+       subtitle = paste("95% CI:", round(ci[1], 3), "-", round(ci[2], 3)),
+       x = "Mean Inter-Arrival Time", y = "Density") +
   theme_minimal()
-
-#dit is testtestest
-#dfsdklfjsd
-#soifjakodfsja
-#ftyhhgfngfhb
