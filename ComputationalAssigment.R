@@ -10,7 +10,6 @@ ScanRecords$Date <- as.Date(ScanRecords$Date)
 Type1 <- dplyr::filter(ScanRecords, PatientType=="Type 1") 
 Type2 <- dplyr::filter(ScanRecords, PatientType=="Type 2") 
 
-
 #Duration Scatterplot 
 ggplot(ScanRecords, aes(x=1:618, y=Duration, color = PatientType))+
   geom_point() +
@@ -69,7 +68,7 @@ for (i in 1:N){
     X.star_mean[b] <- mean(X.star) 
   }
   MCbootstrap_mean <- mean(X.star_mean)
-  bias[i] <- MCbootstrap_mean - mean(mc_type2_duration)
+  bias[i] <- (MCbootstrap_mean - mean(mc_type2_duration))^2
 }
 avg_bias = mean(bias) #very low so should be good 
 
