@@ -1,8 +1,8 @@
-rm(list=ls())
 library(ggplot2)
 library(MASS)
 library(tidyverse)
 library(zoo)
+library(dplyr)
 
 #Datasets
 ScanRecords <- read.csv("ScanRecords.csv")
@@ -31,6 +31,114 @@ pdf1 <- dnorm(Type1$Duration, mean=mean(Type1$Duration), sd = sd(Type1$Duration)
 plot(Type1$Duration, pdf1)
 pdf2 <- dnorm(Type2$Duration, mean=mean(Type2$Duration), sd = sd(Type2$Duration))
 plot(Type2$Duration, pdf2)
+
+
+##IMPORTANT METRICS FOR DISCRETE EVENT SIMULATION (TYPE 1 PATIENT SCAN DURATION)##
+# Calculate mean and standard deviation
+mean_duration <- mean(Type1$Duration)
+std_dev <- sd(Type1$Duration)
+n <- length(Type1$Duration)
+std_error <- std_dev / sqrt(n)
+
+# 95% confidence interval using z-value
+z_value <- 1.96
+ci_lower <- mean_duration - z_value * std_error
+ci_upper <- mean_duration + z_value * std_error
+
+# Quantiles
+duration_quantiles <- quantile(Type1$Duration, probs = c(0.025, 0.975))
+
+# Create a summary table
+duration_type1_summary <- tibble(
+  Metric = c(
+    "Sample Mean",
+    "95% Confidence Interval (Lower)",
+    "95% Confidence Interval (Upper)",
+    "Standard Deviation",
+    "Quantile (2.5%)",
+    "Quantile (97.5%)"
+  ),
+  Value = c(
+    mean_duration,
+    ci_lower,
+    ci_upper,
+    std_dev,
+    duration_quantiles[1],
+    duration_quantiles[2]
+  )
+)
+
+# Print the summary table
+print(duration_type1_summary)
+
+
+ggplot(Type1, aes(x = Duration)) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = duration_quantiles[1], color = "blue", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = duration_quantiles[2], color = "blue", linetype = "dashed", size = 1) +
+  labs(
+    title = "Histogram of Scan Durations (Type 1)",
+    x = "Duration",
+    y = "Frequency"
+  ) +
+  annotate(
+    "text",
+    x = duration_quantiles[1],
+    y = max(table(cut(Type1$Duration, breaks = 20))),
+    label = paste0("2.5% Quantile: ", round(duration_quantiles[1], 2)),
+    hjust = -0.1,
+    color = "blue"
+  ) +
+  annotate(
+    "text",
+    x = duration_quantiles[2],
+    y = max(table(cut(Type1$Duration, breaks = 20))),
+    label = paste0("97.5% Quantile: ", round(duration_quantiles[2], 2)),
+    hjust = -0.1,
+    color = "blue"
+  )
+
+
+### INTERARRIVAL TIMES FOR TYPE 1###
+Type1 <- Type1 %>%
+  group_by(Date) %>%
+  mutate(
+    InterArrivalTime = Time - lag(Time),  # Standard inter-arrival time within the same day
+    FirstOfDay = row_number() == 1        # Flag for the first record of the day
+  ) %>%
+  ungroup()
+
+# Handle first times of each day
+Type1 <- Type1 %>%
+  mutate(
+    InterArrivalTime = ifelse(
+      FirstOfDay,
+      # If first record of the day, calculate time difference with lagged time + 9 hours (17,00 - 8,00 = 9,00)
+      Time - lag(Time) + 9,
+      InterArrivalTime
+    )
+  )
+    
+# Remove remaining NA values (the first time of the first day)
+InterArrivalTimes <- Type1$InterArrivalTime[!is.na(Type1$InterArrivalTime)]
+
+# Calculate statistical metrics
+mean_interarrival <- mean(InterArrivalTimes)
+
+# Rate parameter for exponential distribution
+lambda_rate <- 1 / mean_interarrival
+
+
+ggplot(Type1, aes(x = InterArrivalTime)) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(
+    title = "Histogram of Interarrivaltimes (Type 1)",
+    x = "Interarrivaltimes",
+    y = "Frequency"
+  ) 
+
+
+
 
 #Bootstrapping the mean duration for type 2 
 X <- Type2$Duration
