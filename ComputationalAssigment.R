@@ -150,36 +150,67 @@ St.Dev <- sd(X)                                         # Standard deviation of 
 
 X.star_mean <- rep(NA, n)
 X.star_sd <- rep(NA,n)
-
+X.star_low <- rep(NA, n)      # 0.025 bound
+X.star_high <- rep(NA, n)     # 0.975 bound
 for (b in 1:B) {
   J <- sample.int(n, size = n, replace = TRUE)            # Draw the indices J
   X.star <- X[J]                                      # Draw the bootstrap sample
   X.star_mean[b] <- mean(X.star) 
   X.star_sd[b] <- sd(X.star)
+  X.star_high[b] <- quantile(X.star, probs = 0.975)
+  X.star_low[b] <- quantile(X.star, probs = 0.025)
 }
 
 mean_duration_type2 <- mean(X.star_mean) #these are the variables of interest to us
 SD_duration_type2 <- mean(X.star_sd)
+duration2_quantiles <- c(mean(X.star_low), mean(X.star_high))
+
+duration_type2_summary <- tibble(
+  Metric = c(
+    "Sample Mean",
+    "95% Confidence Interval (Lower)",
+    "95% Confidence Interval (Upper)",
+    "Standard Deviation",
+    "Quantile (2.5%)",
+    "Quantile (97.5%)"
+  ),
+  Value = c(
+    mean_duration_type2,
+    mean_duration_type2-1.96*SD_duration_type2/sqrt(n),
+    mean_duration_type2+1.96*SD_duration_type2/sqrt(n),
+    SD_duration_type2,
+    duration2_quantiles[1],
+    duration2_quantiles[2]
+  )
+)
 
 # Monte Carlo Study for the type 2 bootstrap mean (this can take long)
 N = 2000
 B = 500 
-bias = rep(NA, N)
+bias_mean = rep(NA, N)
+bias_sd = rep(NA, N)
 for (i in 1:N){
   mc_type2_duration <- rnorm(length(Type2$Duration),
                              mean = mean_duration_type2,
                              sd = SD_duration_type2)
+  mc_mean <- mean(mc_type2_duration)
+  mc_sd <- sd(mc_type2_duration)
   X.star_mean <- rep(NA, length(Type2$Duration))
+  X.star_sd <- rep(NA, length(Type2$Duration))
   for (b in 1:B){
     J <- sample.int(length(Type2$Duration), size = length(Type2$Duration), replace = TRUE)
     X.star <- mc_type2_duration[J]                                      # Draw the bootstrap sample
     X.star_mean[b] <- mean(X.star) 
+    X.star_sd[b] <- sd(X.star)
   }
   MCbootstrap_mean <- mean(X.star_mean)
-  bias[i] <- (MCbootstrap_mean - mean(mc_type2_duration))^2
-}
-avg_bias = mean(bias) #very low so should be good 
+  MCbootstrap_sd <- mean(X.star_sd)
+  bias_mean[i] <- (MCbootstrap_mean - mc_mean)^2
+  bias_sd[i] <- (MCbootstrap_sd - mc_sd)^2
 
+}
+avg_bias_mean = mean(bias_mean) #very low so should be good 
+avg_bias_sd = mean(bias_sd)
 
 ## BOOTSTRAP patient 1 arrival times with interarival times
 
