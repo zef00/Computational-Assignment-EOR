@@ -212,10 +212,10 @@ for (i in 1:N){
 avg_bias_mean = mean(bias_mean) #very low so should be good 
 avg_bias_sd = mean(bias_sd)
 
-## BOOTSTRAP patient 1 arrival times with interarival times
+## BOOTSTRAP patient 2 arrival times with interarival times
 
 # Calculate inter-arrival times
-Type1 <- Type1 %>%
+Type2 <- Type2 %>%
   group_by(Date) %>%
   mutate(
     InterArrivalTime = Time - lag(Time),  # Standard inter-arrival time within the same day
@@ -224,7 +224,7 @@ Type1 <- Type1 %>%
   ungroup()
 
 # Handle first times of each day
-Type1 <- Type1 %>%
+Type2 <- Type2 %>%
   mutate(
     InterArrivalTime = ifelse(
       FirstOfDay,
@@ -235,7 +235,7 @@ Type1 <- Type1 %>%
   )
 
 # Remove remaining NA values (the first time of the first day)
-InterArrivalTimes <- Type1$InterArrivalTime[!is.na(Type1$InterArrivalTime)]
+InterArrivalTimes <- Type2$InterArrivalTime[!is.na(Type2$InterArrivalTime)]
 
 # Calculate rate parameter for exponential distribution
 lambda <- 1 / mean(InterArrivalTimes)
