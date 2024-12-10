@@ -268,3 +268,77 @@ ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) 
        subtitle = paste("95% CI:", round(ci[1], 3), "-", round(ci[2], 3)),
        x = "Mean Inter-Arrival Time", y = "Density") +
   theme_minimal()
+
+
+# Bootstrap duration for all the patients together
+X <- ScanRecords$Duration
+B <- 1000 
+
+n <- length(X)                                          # Sample size
+X.bar <- mean(X)                                        # Sample mean of X
+St.Dev <- sd(X)                                         # Standard deviation of X
+
+X.star_mean <- rep(NA, n)
+X.star_sd <- rep(NA,n)
+X.star_low <- rep(NA, n)      # 0.025 bound
+X.star_high <- rep(NA, n)     # 0.975 bound
+for (b in 1:B) {
+  J <- sample.int(n, size = n, replace = TRUE)            # Draw the indices J
+  X.star <- X[J]                                      # Draw the bootstrap sample
+  X.star_mean[b] <- mean(X.star) 
+  X.star_sd[b] <- sd(X.star)
+  X.star_high[b] <- quantile(X.star, probs = 0.75)
+  X.star_low[b] <- quantile(X.star, probs = 0.06)
+}
+
+mean_duration_all <- mean(X.star_mean) #these are the variables of interest to us
+SD_duration_all <- mean(X.star_sd)
+duration_all_quantiles <- c(mean(X.star_low), mean(X.star_high))
+
+duration_all_summary <- tibble(
+  Metric = c(
+    "Sample Mean",
+    "95% Confidence Interval (Lower)",
+    "95% Confidence Interval (Upper)",
+    "Standard Deviation",
+    "Quantile (60%)",
+    "Quantile (75%)"
+  ),
+  Value = c(
+    mean_duration_all,
+    mean_duration_all-1.96*SD_duration_all/sqrt(n),
+    mean_duration_all+1.96*SD_duration_all/sqrt(n),
+    SD_duration_all,
+    duration_all_quantiles[1],
+    duration_all_quantiles[2]
+  )
+)
+
+# Monte Carlo Study for the duration bootstrap mean and standard deviation (this can take long)
+N = 2000
+B = 500 
+bias_mean = rep(NA, N)
+bias_sd = rep(NA, N)
+for (i in 1:N){
+  mc_type_duration <- rnorm(length(ScanRecords$Duration),
+                             mean = mean_duration_all,
+                             sd = SD_duration_all)
+  mc_mean <- mean(mc_type_duration)
+  mc_sd <- sd(mc_type_duration)
+  X.star_mean <- rep(NA, length(ScanRecords$Duration))
+  X.star_sd <- rep(NA, length(ScanRecords$Duration))
+  for (b in 1:B){
+    J <- sample.int(length(ScanRecords$Duration), size = length(ScanRecords$Duration), replace = TRUE)
+    X.star <- mc_type_duration[J]                                      # Draw the bootstrap sample
+    X.star_mean[b] <- mean(X.star) 
+    X.star_sd[b] <- sd(X.star)
+  }
+  MCbootstrap_mean <- mean(X.star_mean)
+  MCbootstrap_sd <- mean(X.star_sd)
+  bias_mean[i] <- (MCbootstrap_mean - mc_mean)^2
+  bias_sd[i] <- (MCbootstrap_sd - mc_sd)^2
+  
+}
+avg_bias_mean = mean(bias_mean) #very low so should be good 
+avg_bias_sd = mean(bias_sd)
+
