@@ -10,6 +10,28 @@ ScanRecords$Date <- as.Date(ScanRecords$Date)
 Type1 <- dplyr::filter(ScanRecords, PatientType=="Type 1") 
 Type2 <- dplyr::filter(ScanRecords, PatientType=="Type 2") 
 
+#Descriptives 
+ScanRecords_grouped <- ScanRecords %>%
+  group_by(PatientType) %>%
+  summarise(count = length(PatientType))
+
+ggplot(ScanRecords_grouped, aes(x = PatientType, y = count, fill = PatientType)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Type", y = "Counts") +
+  theme_minimal()
+
+Type1_grouped <- Type1 %>% 
+  group_by(Date) %>%
+  summarise(count = length(Date)) %>%
+  arrange(count)
+
+ggplot(Type1_grouped)+
+  geom_histogram(aes(x=count))
+
+Type2_grouped <- Type2 %>% 
+  group_by(Date) %>%
+  summarise(count = length(Date))
+
 #Duration Scatterplot 
 ggplot(ScanRecords, aes(x=1:618, y=Duration, color = PatientType))+
   geom_point() +
@@ -122,14 +144,12 @@ lambda_rate <- 1 / mean_interarrival
 
 
 ggplot(Type1, aes(x = InterArrivalTime)) +
-  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black", alpha = 0.7) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "darkgreen", alpha = 0.7) +
   labs(
-    title = "Histogram of Interarrivaltimes (Type 1)",
-    x = "Interarrivaltimes",
+    title = "Histogram of Interarrival times (Type 1)",
+    x = "Interarrival times",
     y = "Frequency"
   ) 
-
-
 
 
 #Bootstrapping the mean duration for type 2 
@@ -228,6 +248,15 @@ Type2 <- Type2 %>%
 
 # Remove remaining NA values (the first time of the first day)
 InterArrivalTimes <- Type2$InterArrivalTime[!is.na(Type2$InterArrivalTime)]
+
+# plot histogram of interarrival times of patienttype 2 
+ggplot(Type2, aes(x = InterArrivalTime)) +
+  geom_histogram(binwidth = 0.1, fill = "lightblue", color = "darkblue", alpha = 0.7) +
+  labs(
+    title = "Histogram of Interarrival times (Type 2)",
+    x = "Interarrival times",
+    y = "Frequency"
+  ) 
 
 # Calculate rate parameter for exponential distribution
 lambda <- 1 / mean(InterArrivalTimes)
