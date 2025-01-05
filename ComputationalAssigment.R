@@ -46,7 +46,9 @@ ggplot(Type2) +
 
 #Duration qqplots
 qqnorm(Type1$Duration) #This suggests a normal distribution, which corresponds to the information given
+qqline(Type1$Duration, col = "red", lwd = 2)
 qqnorm(Type2$Duration) #This one is bit weird 
+qqline(Type2$Duration, col = "red", lwd = 2)
 
 #Duration Normal Distribution PDF plot
 pdf1 <- dnorm(Type1$Duration, mean=mean(Type1$Duration), sd = sd(Type1$Duration))
@@ -258,10 +260,14 @@ ggplot(Type2, aes(x = InterArrivalTime)) +
     y = "Frequency"
   ) 
 
-# Check of we can use parametric bootstrap (seems to NOT be the case)
-gf <- goodfit(Type2_grouped$count,type= "poisson",method= "ML")
+# Check of we can use poisson/exponential distribution for bootstrap (seems to NOT be the case)
+gf <- goodfit(InterArrivalTimes,type= "poisson",method= "ML")
 summary(gf)
-plot(gf,main="Count data vs Poisson distribution")
+ks.test(InterArrivalTimes, "pexp", rate =  1 / mean(InterArrivalTimes))
+
+# Testing if we can use normal distribution for bootstrap (seems like it)
+qqnorm(InterArrivalTimes) 
+qqline(InterArrivalTimes, col = "red", lwd = 2)
 
 # Calculate rate parameter for exponential distribution
 lambda <- 1 / mean(InterArrivalTimes)
@@ -394,6 +400,15 @@ ScanRecords <- ScanRecords %>%
 
 # Remove remaining NA values (the first time of the first day)
 InterArrivalTimes <- ScanRecords$InterArrivalTime[!is.na(ScanRecords$InterArrivalTime)]
+
+# Plot the Interarrival time 
+ggplot(ScanRecords, aes(x = InterArrivalTime)) +
+  geom_histogram(binwidth = 0.1, fill = "violet", color = "purple", alpha = 0.7) +
+  labs(
+    title = "Histogram of Interarrival times (All Types)",
+    x = "Interarrival times",
+    y = "Frequency"
+  ) 
 
 #Check if we can use parametric bootstrap (doubtful as p-value = 0.06)
 ScanRecords_grouped <- ScanRecords %>%
