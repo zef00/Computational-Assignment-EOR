@@ -258,7 +258,7 @@ ggplot(Type2, aes(x = InterArrivalTime)) +
     y = "Frequency"
   ) 
 
-# Check of we can use parametric bootstrap (seems to be the case)
+# Check of we can use parametric bootstrap (seems to NOT be the case)
 gf <- goodfit(Type2_grouped$count,type= "poisson",method= "ML")
 summary(gf)
 plot(gf,main="Count data vs Poisson distribution")
