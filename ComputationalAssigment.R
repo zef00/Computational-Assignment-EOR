@@ -3,6 +3,7 @@ library(MASS)
 library(tidyverse)
 library(zoo)
 library(dplyr)
+library(vcd)
 
 #Datasets
 ScanRecords <- read.csv("ScanRecords.csv")
@@ -22,8 +23,7 @@ ggplot(ScanRecords_grouped, aes(x = PatientType, y = count, fill = PatientType))
 
 Type1_grouped <- Type1 %>% 
   group_by(Date) %>%
-  summarise(count = length(Date)) %>%
-  arrange(count)
+  summarise(count = length(Date))
 
 ggplot(Type1_grouped)+
   geom_histogram(aes(x=count))
@@ -258,6 +258,11 @@ ggplot(Type2, aes(x = InterArrivalTime)) +
     y = "Frequency"
   ) 
 
+# Check of we can use parametric bootstrap (seems to be the case)
+gf <- goodfit(Type2_grouped$count,type= "poisson",method= "ML")
+summary(gf)
+plot(gf,main="Count data vs Poisson distribution")
+
 # Calculate rate parameter for exponential distribution
 lambda <- 1 / mean(InterArrivalTimes)
 
@@ -389,6 +394,15 @@ ScanRecords <- ScanRecords %>%
 
 # Remove remaining NA values (the first time of the first day)
 InterArrivalTimes <- ScanRecords$InterArrivalTime[!is.na(ScanRecords$InterArrivalTime)]
+
+#Check if we can use parametric bootstrap (doubtful as p-value = 0.06)
+ScanRecords_grouped <- ScanRecords %>%
+  group_by(Date) %>%
+  summarise(count = length(PatientType))
+
+gf <- goodfit(ScanRecords_grouped$count,type= "poisson",method= "ML")
+summary(gf)
+plot(gf,main="Count data vs Poisson distribution")
 
 # Calculate rate parameter for exponential distribution
 lambda <- 1 / mean(InterArrivalTimes)
