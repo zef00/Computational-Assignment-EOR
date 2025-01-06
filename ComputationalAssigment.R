@@ -269,25 +269,26 @@ ks.test(InterArrivalTimes, "pexp", rate =  1 / mean(InterArrivalTimes))
 qqnorm(InterArrivalTimes) 
 qqline(InterArrivalTimes, col = "red", lwd = 2)
 
-# Calculate rate parameter for exponential distribution
-lambda <- 1 / mean(InterArrivalTimes)
-
 # Perform bootstrapping based on exponential distribution
 B <- 10000  # Number of bootstrap samples
 bootstrap_means <- numeric(B)
+bootstrap_sd <- numeric(B)
 
 for (b in seq_len(B)) {
   # Generate bootstrap sample from exponential distribution
-  bootstrap_sample <- rexp(length(InterArrivalTimes), rate = lambda)
+  bootstrap_sample <- rnorm(length(InterArrivalTimes), mean = mean(InterArrivalTimes), sd = sd(InterArrivalTimes))
   bootstrap_means[b] <- mean(bootstrap_sample)
+  bootstrap_sd[b] <- sd(bootstrap_sample)
 }
 
 # Calculate bootstrapped mean and 95% confidence interval
 bootstrapped_mean <- mean(bootstrap_means)
+bootstrapped_sd <- mean(bootstrap_sd)
 ci <- quantile(bootstrap_means, probs = c(0.025, 0.975))
 
 # Print results
-cat("Bootstrapped Mean Inter-Arrival Time (Exponential):", bootstrapped_mean, "\n")
+cat("Bootstrapped Mean Inter-Arrival Time:", bootstrapped_mean, "\n")
+cat("Bootstrapped SD Inter-Arrival Time:", bootstrapped_sd, "\n")
 cat("95% Confidence Interval for Mean Inter-Arrival Time (Exponential):", ci, "\n")
 
 # Plot the bootstrap distribution
@@ -296,7 +297,7 @@ ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) 
   geom_vline(xintercept = bootstrapped_mean, color = "red", linetype = "dashed") +
   geom_vline(xintercept = ci[1], color = "blue", linetype = "dotted") +
   geom_vline(xintercept = ci[2], color = "blue", linetype = "dotted") +
-  labs(title = "Bootstrap Distribution of Mean Inter-Arrival Time (Exponential)",
+  labs(title = "Bootstrap Distribution of Mean Inter-Arrival Time",
        subtitle = paste("95% CI:", round(ci[1], 3), "-", round(ci[2], 3)),
        x = "Mean Inter-Arrival Time", y = "Density") +
   theme_minimal()
