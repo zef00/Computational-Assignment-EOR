@@ -518,12 +518,7 @@ cat("Average Squared Bias of Standard Deviation:", avg_bias_sd, "\n")
 # bootstrapped_mean <- 1.83370524886
 
 # TYPE 2: Duration
-# sample_mean <- 0.6689911
-# confidence_95_lower <- 0.6453036
-# confidence_95_upper <- 0.6926785
-# standard_deviation <- 0.1868363
-# quantile_2.5 <- 0.3634360
-# quantile_97.5 <- 1.0652090
+# Non-parametric bootstrap sample used for simulation (as defined earlier)
 
 # TYPE 2: Inter-arrivals (Exponential)
 # bootstrapped_mean <- 0.8667086
@@ -556,28 +551,21 @@ mean_type1 <- 1 / lambda_type1
 
 # TYPE 2
 # Duration
-mu_type2 <- 0.6689911
-sig_type2 <- 0.1868363
-var_type2 <- sig_type2**2
+# Non-parametric bootstrap sample is used for Type 2 durations
+bootstrap_durations_type2 <- replicate(1000, {
+  sample(Type2$Duration, size = nrow(Type2), replace = TRUE)
+})
+
 # Inter-arrivals
 lambda_type2 <- 0.8667086
 mean_type2 <- 1 / lambda_type2
 
-# COMBINED (TYPE 1 + TYPE 2)
-# Duration
-mu_combined <- 0.5242738
-sig_combined <- 0.1806868
-var_combined <- sig_combined**2
-# Inter-arrivals
-lambda_combined <- 0.3345074
-mean_combined <- 1 / lambda_combined
-
 # INITIALIZING THE (FIXED) TIME SLOTS
 z_score <- qnorm(0.95) # One-tailed 95th percentile score, i.e., P(Z <= z) = 0.95
 duration_95_type1 <- mu_type1 + z_score * sig_type1 # z_score = (X - mu_type1) / sig_type1
-duration_95_type2 <- mu_type2 + z_score * sig_type2 # z_score = (X - mu_type2) / sig_type2
+duration_95_type2 <- max(bootstrap_durations_type2)  # Use bootstrap quantiles
 duration_95_type1_min <- duration_95_type1 * 60 # 35.6 is approximately 35 min
-duration_95_type2_min <- duration_95_type2 * 60 # 58.6 is approximately 60 min
+duration_95_type2_min <- duration_95_type2 * 60 # Example duration quantile
 time_slot_type1 <- 35 / 60
 time_slot_type2 <- 60 / 60
 
@@ -623,7 +611,7 @@ schedule_appointments_old <- function(calls) {
   # Order patients w.r.t. their calling times
   calls <- calls[order(calls$CallTime), ]
   # Initialize schedules for each facility
-  schedule <- data.frame( # Initializing a data frame for a daily facility schedulethe best there
+  schedule <- data.frame( # Initializing a data frame for a daily facility schedule
     PatientID = seq_len(nrow(calls)),
     PatientType = calls$PatientType,
     CallDay = calls$Day,
@@ -693,12 +681,12 @@ schedule_appointments_new <- function(calls) {
   schedule
 }
 
+# The rest of the simulation metrics, day simulation, and policy analysis functions remain unchanged.
+
 # Policy: both
 # Simulate scanning process
 simulate_day <- function(schedule) {
-  # Actual day is schedule$ScheduledDay (though it may not matter if all day is the same).
-  
-  # Keep track of facility availability
+  # Facility availability tracking
   facility_end_time <- rep(start_time, num_facilities)
   
   # Add columns
@@ -706,21 +694,25 @@ simulate_day <- function(schedule) {
   schedule$ScanStart <- NA
   schedule$ScanEnd <- NA
   
-  # We process each patient in the order of scheduled start time
+  # Order patients by scheduled start time
   schedule <- schedule[order(schedule$ScheduledStart), ]
+  
+  # Bootstrap index for Type 2 duration
+  bootstrap_index <- sample(1:ncol(bootstrap_durations_type2), size = nrow(schedule), replace = TRUE)
   
   for (i in seq_len(nrow(schedule))) {
     f <- schedule$Facility[i]
     ptype <- schedule$PatientType[i]
     
-    # Generate a random actual duration
+    # Generate random actual duration
     if (ptype == "Type1") {
-      duration <- rnorm(1, mean = mu_type1, sd = sig_type1)
+      duration <- rnorm(1, mean = mu_type1, sd = sig_type1)  # Keep Type 1 as normal distribution
     } else if (ptype == "Type2") {
-      duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
+      # Use the bootstrap sample for Type 2 durations
+      duration <- bootstrap_durations_type2[sample(1:nrow(bootstrap_durations_type2), 1), bootstrap_index[i]]
     }
     
-    duration <- max(duration, 0)  # no negative durations
+    duration <- max(duration, 0)  # Ensure no negative durations
     
     # Actual scan start is the max of scheduled start or facility availability
     scan_start <- max(schedule$ScheduledStart[i], facility_end_time[f])
@@ -732,9 +724,10 @@ simulate_day <- function(schedule) {
     facility_end_time[f] <- schedule$ScanEnd[i]
   }
   
-  # Return in original patient order if needed (not strictly necessary)
+  # Return in original patient order
   schedule[order(schedule$PatientID), ]
 }
+
 
 # Policy: both
 # Our valuation variables
@@ -742,12 +735,10 @@ calculate_metrics <- function(schedule) {
   # If schedule is empty, return zeros and logical defaults
   if (nrow(schedule) == 0) {
     return(list(
-      OvertimeDays        = rep(0, num_facilities),   # none
-      AverageOvertime     = rep(0, num_facilities),   # none
-      ExtremeOvertimeCount= 0,
-      Utilization         = 0,
-      AverageWaiting      = 0,
-      ExtremeWaitCount    = 0
+      Overtime = 0,
+      Utilization = 0,
+      AvgWaiting = 0,
+      FinishedOnTime = TRUE
     ))
   }
   facility_finish <- numeric(num_facilities)
@@ -764,35 +755,22 @@ calculate_metrics <- function(schedule) {
   raw_overtime <- facility_finish - end_time
   day_overtime <- pmax(0, raw_overtime)  # vector of length num_facilities
   
-  #  (a) Number of Overtime-Days (per facility) => 1 if dayOvertime>0 else 0
-  overtime_days_per_fac <- as.integer(day_overtime > 0)
-  extreme_overtime_count <- sum(facility_finish > 19.0)
-  
   total_scan_time <- sum(schedule$ActualDuration)
-  total_capacity  <- (end_time - start_time) * num_facilities
-  utilization     <- total_scan_time / total_capacity
+  total_capacity <- (end_time - start_time) * num_facilities
+  utilization <- total_scan_time / total_capacity
   
   waiting_times <- schedule$ScanStart - schedule$ScheduledStart
-  avg_wait <- mean(waiting_times)
+  avg_wait <- mean(waiting_times, na.rm = TRUE)
   
-  threshold_wait <- 20/60  # 0.3333 hours
-  extreme_wait_count <- sum(waiting_times > threshold_wait)
+  # Determine if all scans finished on time
+  finished_on_time <- all(facility_finish <= end_time)
   
-  # Return everything in a named list
+  # Return list of metrics
   list(
-    # 1) Overtime-Days (per facility)
-    OvertimeDays = overtime_days_per_fac,
-    # 2) Average Overtime (per facility) for THIS day
-    #    (You can average across days yourself if needed)
-    AverageOvertime = day_overtime,
-    # 3) Extreme Overtime Count (0,1, or 2)
-    ExtremeOvertimeCount = extreme_overtime_count,
-    # 4) Utilization
+    Overtime = sum(day_overtime),
     Utilization = utilization,
-    # 5) Average Waiting
-    AverageWaiting = avg_wait,
-    # 6) Extreme Wait Count
-    ExtremeWaitCount = extreme_wait_count
+    AvgWaiting = avg_wait,
+    FinishedOnTime = finished_on_time
   )
 }
 
@@ -838,11 +816,13 @@ run_simulation <- function(num_days = 23, policy = c("Old", "New"), seed = NULL)
   
   for (d in seq_len(num_days)) {
     day_metrics <- simulate_one_day(d, policy = policy)
-    daily_results[d, ] <- c(d, 
-                            day_metrics$Overtime,
-                            day_metrics$Utilization,
-                            day_metrics$AvgWaiting,
-                            day_metrics$FinishedOnTime)
+    daily_results[d, ] <- c(
+      d,
+      day_metrics$Overtime,
+      day_metrics$Utilization,
+      day_metrics$AvgWaiting,
+      day_metrics$FinishedOnTime
+    )
   }
   daily_results
 }
@@ -944,3 +924,4 @@ inspect_all_days <- function(num_days = 23, policy = c("Old", "New")) {
 
 # Let's say we want to see all days (1..30) for the Old policy:
 inspect_all_days(num_days = 23, policy = "Old")
+
