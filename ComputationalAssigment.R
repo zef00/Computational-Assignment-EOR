@@ -561,8 +561,11 @@ sig_type2 <- 0.1868363
 var_type2 <- sig_type2^2
 
 # Inter-arrivals (Type2)
-lambda_type2 <- 0.8667086
-mean_type2   <- 1 / lambda_type2
+# lambda_type2 <- 0.8667086 # exp. distr.
+# mean_type2   <- 1 / lambda_type2
+mean_int_type2 <- 0.8663962 # normal distr.
+sig_int_type2 <- 0.3103057
+var_int_type2 <- sig_int_type2^2
 
 # COMBINED (TYPE 1 + TYPE 2)
 mu_combined <- 0.5242738
@@ -590,7 +593,7 @@ end_time   <- 17.00 # working day end
 
 ############################## PART II #########################################
 # Generating patient calls
-generate_calls <- function(lambda, day, patient_type) {
+generate_calls_type1 <- function(lambda, day, patient_type) {
   calls <- c()
   time <- start_time
   while (time < end_time) {
@@ -607,10 +610,27 @@ generate_calls <- function(lambda, day, patient_type) {
   )
 }
 
+generate_calls_type2 <- function(mean_int_type2, sig_int_type2, day, patient_type) {
+  calls <- c()
+  time <- start_time
+  while (time < end_time) {
+    inter_arrival <- rnorm(1, mean_int_type2, sig_int_type2)
+    time <- time + inter_arrival
+    if (time < end_time) {
+      calls <- c(calls, time)
+    }
+  }
+  data.frame(
+    Day         = day,
+    CallTime    = calls,
+    PatientType = patient_type
+  )
+}
+
 # Combine Type1 + Type2 calls
 generate_daily_calls <- function(day) {
-  calls_type1 <- generate_calls(lambda_type1, day, "Type1")
-  calls_type2 <- generate_calls(lambda_type2, day, "Type2")
+  calls_type1 <- generate_calls_type1(lambda_type1, day, "Type1")
+  calls_type2 <- generate_calls_type2(mean_int_type2, sig_int_type2, day, "Type2")
   rbind(calls_type1, calls_type2)
 }
 
