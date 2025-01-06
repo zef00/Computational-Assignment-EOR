@@ -500,4 +500,446 @@ cat("Average Squared Bias of Mean:", avg_bias_mean, "\n")
 cat("Average Squared Bias of Standard Deviation:", avg_bias_sd, "\n")
 
 
+################################################################################
+# PART II
+# Old Policy = Having a facility for each type
+# New Policy = Having uniform facilities
+################################################################################
 
+# Distributions PART I
+# TYPE 1: Duration
+# sample_mean <- 0.43266080
+# standard_deviation <- 0.09777424
+# quantile_2.5 <- 0.24122472
+# quantile_97.5 <- 0.63157661
+
+# TYPE 1: Inter-arrivals (Exponential)
+# bootstrapped_mean <- 1.83370524886
+
+# TYPE 2: Duration
+# sample_mean <- 0.6689911
+# confidence_95_lower <- 0.6453036
+# confidence_95_upper <- 0.6926785
+# standard_deviation <- 0.1868363
+# quantile_2.5 <- 0.3634360
+# quantile_97.5 <- 1.0652090
+
+# TYPE 2: Inter-arrivals (Exponential)
+# bootstrapped_mean <- 0.8667086
+# confidence_95_lower <- 0.7595675
+# confidence_95_upper <- 0.9816138
+
+# COMBINED: Duration
+# sample_mean <- 0.5242738
+# confidence_95_lower <- 0.5100280
+# confidence_95_upper <- 0.5385197
+# standard_deviation <- 0.1806868
+# quantile_60 <- 0.3051035
+# quantile_75 <- 0.6118824
+
+# COMBINED: Inter-arrivals (Exponential)
+# bootstrapped_mean <- 0.3345074
+# confidence_95_lower <- 0.3086699
+# confidence_95_upper <- 0.3613692
+
+######################### RESULTS FROM PART I ##################################
+set.seed(777)
+# TYPE 1
+# Duration
+mu_type1 <- 0.43266080
+sig_type1 <- 0.09777424
+var_type1 <- sig_type1**2
+# Inter-arrivals
+lambda_type1 <- 1.83370524886
+mean_type1 <- 1 / lambda_type1
+
+# TYPE 2
+# Duration
+mu_type2 <- 0.6689911
+sig_type2 <- 0.1868363
+var_type2 <- sig_type2**2
+# Inter-arrivals
+lambda_type2 <- 0.8667086
+mean_type2 <- 1 / lambda_type2
+
+# COMBINED (TYPE 1 + TYPE 2)
+# Duration
+mu_combined <- 0.5242738
+sig_combined <- 0.1806868
+var_combined <- sig_combined**2
+# Inter-arrivals
+lambda_combined <- 0.3345074
+mean_combined <- 1 / lambda_combined
+
+# INITIALIZING THE (FIXED) TIME SLOTS
+z_score <- qnorm(0.95) # One-tailed 95th percentile score, i.e., P(Z <= z) = 0.95
+duration_95_type1 <- mu_type1 + z_score * sig_type1 # z_score = (X - mu_type1) / sig_type1
+duration_95_type2 <- mu_type2 + z_score * sig_type2 # z_score = (X - mu_type2) / sig_type2
+duration_95_type1_min <- duration_95_type1 * 60 # 35.6 is approximately 35 min
+duration_95_type2_min <- duration_95_type2 * 60 # 58.6 is approximately 60 min
+time_slot_type1 <- 35 / 60
+time_slot_type2 <- 60 / 60
+
+# DISCRETE EVENT SIMULATION
+# Policy: both
+# Parameters
+num_facilities <- 2
+sim_period <- 23 # Approximately one month
+start_time <- 8.00 # Every day starts at 8.00h
+end_time <- 17.00 # And after 17.00h considered 'overtime'
+
+# Policy: both
+# Generating patient calls (input: certain day of the 30-day month -> t+1)
+generate_calls <- function(lambda, day, patient_type) {
+  calls <- c()
+  time <- start_time
+  while (time < end_time) { # Call center closes at 17.00h
+    inter_arrival <- rexp(1, rate = lambda) # Time between arrivals \sim Exp(\lambda)
+    time <- time + inter_arrival # Update time of the day variable
+    if (time < end_time) { # Add call if happens before closing hour
+      calls <- c(calls, time)
+    }
+  }
+  data.frame(
+    Day = day,
+    CallTime = calls,
+    PatientType = patient_type
+  )
+}
+
+# Policy: both
+# Combining daily calls from type I and type II (input: certain day of the 30-day month)
+generate_daily_calls <- function(day) {
+  calls_type1 <- generate_calls(lambda_type1, day, "Type1")
+  calls_type2 <- generate_calls(lambda_type2, day, "Type2")
+  calls <- rbind(calls_type1, calls_type2) # rbind() function adds type II calls below type I calls
+  return(calls)
+}
+
+# Policy: Old
+# Assigning patients to facilities and time slots
+schedule_appointments_old <- function(calls) {
+  # Order patients w.r.t. their calling times
+  calls <- calls[order(calls$CallTime), ]
+  # Initialize schedules for each facility
+  schedule <- data.frame( # Initializing a data frame for a daily facility schedulethe best there
+    PatientID = seq_len(nrow(calls)),
+    PatientType = calls$PatientType,
+    CallDay = calls$Day,
+    ScheduledDay = calls$Day + 1, # Patients have to be scheduled the next day
+    ScheduledStart = NA,
+    Facility = NA
+  )
+  # Split patients by type
+  idx_type1 <- which(schedule$PatientType == "Type1")
+  idx_type2 <- which(schedule$PatientType == "Type2")
+  # Assign facilities
+  schedule$Facility[idx_type1] <- 1
+  schedule$Facility[idx_type2] <- 2
+  # For facility 1, schedule Type1 patients sequentially
+  if (length(idx_type1) > 0) {
+    start_time_vector <- rep(start_time, length(idx_type1))
+    for (i in seq_along(idx_type1)) {
+      if (i > 1) {
+        start_time_vector[i] <- start_time_vector[i-1] + time_slot_type1
+      }
+      schedule$ScheduledStart[idx_type1[i]] <- start_time_vector[i]
+    }
+  }
+  # For facility 2, schedule Type2 patients sequentially
+  if (length(idx_type2) > 0) {
+    start_time_vector <- rep(start_time, length(idx_type2))
+    for (i in seq_along(idx_type2)) {
+      if (i > 1) {
+        start_time_vector[i] <- start_time_vector[i-1] + time_slot_type2
+      }
+      schedule$ScheduledStart[idx_type2[i]] <- start_time_vector[i]
+    }
+  }
+  schedule
+}
+
+# Policy: New
+# Assigning patients to facilities and time slots
+schedule_appointments_new <- function(calls) {
+  calls <- calls[order(calls$CallTime), ]
+  schedule <- data.frame(
+    PatientID = seq_len(nrow(calls)),
+    PatientType = calls$PatientType,
+    CallDay = calls$Day,
+    ScheduledDay = calls$Day + 1,
+    ScheduledStart = NA,
+    Facility = NA
+  )
+  
+  # Track next available time for each facility
+  facility_next_time <- rep(start_time, num_facilities)
+  
+  for (i in seq_len(nrow(schedule))) {
+    ptype <- schedule$PatientType[i]
+    # Decide slot length
+    slot_len <- if (ptype == "Type1") time_slot_type1 else time_slot_type2
+    
+    # Find facility that is available first
+    f <- which.min(facility_next_time)  # facility index
+    schedule$Facility[i] <- f
+    schedule$ScheduledStart[i] <- facility_next_time[f]
+    
+    # Update that facility's next available time
+    facility_next_time[f] <- facility_next_time[f] + slot_len
+  }
+  
+  schedule
+}
+
+# Policy: both
+# Simulate scanning process
+simulate_day <- function(schedule) {
+  # Actual day is schedule$ScheduledDay (though it may not matter if all day is the same).
+  
+  # Keep track of facility availability
+  facility_end_time <- rep(start_time, num_facilities)
+  
+  # Add columns
+  schedule$ActualDuration <- NA
+  schedule$ScanStart <- NA
+  schedule$ScanEnd <- NA
+  
+  # We process each patient in the order of scheduled start time
+  schedule <- schedule[order(schedule$ScheduledStart), ]
+  
+  for (i in seq_len(nrow(schedule))) {
+    f <- schedule$Facility[i]
+    ptype <- schedule$PatientType[i]
+    
+    # Generate a random actual duration
+    if (ptype == "Type1") {
+      duration <- rnorm(1, mean = mu_type1, sd = sig_type1)
+    } else if (ptype == "Type2") {
+      duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
+    }
+    
+    duration <- max(duration, 0)  # no negative durations
+    
+    # Actual scan start is the max of scheduled start or facility availability
+    scan_start <- max(schedule$ScheduledStart[i], facility_end_time[f])
+    schedule$ScanStart[i] <- scan_start
+    schedule$ActualDuration[i] <- duration
+    schedule$ScanEnd[i] <- scan_start + duration
+    
+    # Update facility availability
+    facility_end_time[f] <- schedule$ScanEnd[i]
+  }
+  
+  # Return in original patient order if needed (not strictly necessary)
+  schedule[order(schedule$PatientID), ]
+}
+
+# Policy: both
+# Our valuation variables
+calculate_metrics <- function(schedule) {
+  # If schedule is empty, return zeros and logical defaults
+  if (nrow(schedule) == 0) {
+    return(list(
+      OvertimeDays        = rep(0, num_facilities),   # none
+      AverageOvertime     = rep(0, num_facilities),   # none
+      ExtremeOvertimeCount= 0,
+      Utilization         = 0,
+      AverageWaiting      = 0,
+      ExtremeWaitCount    = 0
+    ))
+  }
+  facility_finish <- numeric(num_facilities)
+  for (f in seq_len(num_facilities)) {
+    # Rows for this facility
+    idx <- which(schedule$Facility == f)
+    if (length(idx) == 0) {
+      # No patients on this facility => finishing time = 0
+      facility_finish[f] <- start_time  # or 0
+    } else {
+      facility_finish[f] <- max(schedule$ScanEnd[idx])
+    }
+  }
+  raw_overtime <- facility_finish - end_time
+  day_overtime <- pmax(0, raw_overtime)  # vector of length num_facilities
+  
+  #  (a) Number of Overtime-Days (per facility) => 1 if dayOvertime>0 else 0
+  overtime_days_per_fac <- as.integer(day_overtime > 0)
+  extreme_overtime_count <- sum(facility_finish > 19.0)
+  
+  total_scan_time <- sum(schedule$ActualDuration)
+  total_capacity  <- (end_time - start_time) * num_facilities
+  utilization     <- total_scan_time / total_capacity
+  
+  waiting_times <- schedule$ScanStart - schedule$ScheduledStart
+  avg_wait <- mean(waiting_times)
+  
+  threshold_wait <- 20/60  # 0.3333 hours
+  extreme_wait_count <- sum(waiting_times > threshold_wait)
+  
+  # Return everything in a named list
+  list(
+    # 1) Overtime-Days (per facility)
+    OvertimeDays = overtime_days_per_fac,
+    # 2) Average Overtime (per facility) for THIS day
+    #    (You can average across days yourself if needed)
+    AverageOvertime = day_overtime,
+    # 3) Extreme Overtime Count (0,1, or 2)
+    ExtremeOvertimeCount = extreme_overtime_count,
+    # 4) Utilization
+    Utilization = utilization,
+    # 5) Average Waiting
+    AverageWaiting = avg_wait,
+    # 6) Extreme Wait Count
+    ExtremeWaitCount = extreme_wait_count
+  )
+}
+
+# Policy: both
+# SIMULATING A DAY
+simulate_one_day <- function(day, policy = c("Old", "New")) {
+  calls_today <- generate_daily_calls(day)
+  
+  # If no calls, return zero metrics
+  if (nrow(calls_today) == 0) {
+    return(list(
+      Overtime = 0, Utilization = 0,
+      AvgWaiting = 0, FinishedOnTime = TRUE
+    ))
+  }
+  
+  if (policy == "Old") {
+    sched <- schedule_appointments_old(calls_today)
+  } else {
+    sched <- schedule_appointments_new(calls_today)
+  }
+  
+  # Now simulate
+  sched_sim <- simulate_day(sched)
+  
+  # Return metrics
+  calculate_metrics(sched_sim)
+}
+
+# SIMULATING MULPTIPLE DAYS
+run_simulation <- function(num_days = 23, policy = c("Old", "New"), seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  
+  # Collect daily metrics
+  daily_results <- data.frame(
+    Day = integer(),
+    Overtime = numeric(),
+    Utilization = numeric(),
+    AvgWaiting = numeric(),
+    FinishedOnTime = logical(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (d in seq_len(num_days)) {
+    day_metrics <- simulate_one_day(d, policy = policy)
+    daily_results[d, ] <- c(d, 
+                            day_metrics$Overtime,
+                            day_metrics$Utilization,
+                            day_metrics$AvgWaiting,
+                            day_metrics$FinishedOnTime)
+  }
+  daily_results
+}
+
+# Example: single run
+results_old <- run_simulation(num_days = 23, policy = "Old", seed = 777)
+results_new <- run_simulation(num_days = 23, policy = "New", seed = 777)
+
+# Summarize
+summary_old <- data.frame(
+  Overtime = mean(results_old$Overtime),
+  Utilization = mean(results_old$Utilization),
+  AvgWaiting = mean(results_old$AvgWaiting),
+  FinishedOnTimePct = mean(results_old$FinishedOnTime) * 100
+)
+summary_new <- data.frame(
+  Overtime = mean(results_new$Overtime),
+  Utilization = mean(results_new$Utilization),
+  AvgWaiting = mean(results_new$AvgWaiting),
+  FinishedOnTimePct = mean(results_new$FinishedOnTime) * 100
+)
+
+summary_old
+summary_new
+
+# SIMULATING MULTIPLE DAYS AND REPLICATIONS
+run_replications <- function(num_days, policy, R) {
+  metrics_list <- list()
+  for (r in 1:R) {
+    # Each replication can have a different seed or be random
+    daily_res <- run_simulation(num_days, policy)
+    # Store the average over the daily run
+    metrics_list[[r]] <- c(
+      Overtime = mean(daily_res$Overtime),
+      Utilization = mean(daily_res$Utilization),
+      AvgWaiting = mean(daily_res$AvgWaiting),
+      FinishedOnTimePct = mean(daily_res$FinishedOnTime)*100
+    )
+  }
+  # Combine
+  mat <- do.call(rbind, metrics_list)
+  # Return data frame of replication results
+  data.frame(mat)
+}
+
+# Example usage:
+rep_old <- run_replications(23, policy = "Old", R = 4)
+rep_new <- run_replications(23, policy = "New", R = 4)
+
+# Summaries
+apply(rep_old, 2, mean)
+apply(rep_new, 2, mean)
+
+set.seed(777)
+# Code snippet the look at a day
+policy = "Old"
+inspect_one_day <- function(day, policy) {
+  calls_today <- generate_daily_calls(day)
+  if (policy == "Old") {
+    sched <- schedule_appointments_old(calls_today)
+  } else {
+    sched <- schedule_appointments_new(calls_today)
+  }
+  simulate_day(sched)
+}
+schedule_day_5 <- inspect_one_day(day = 1, policy)
+print(schedule_day_5)
+
+set.seed(777)
+# Code snippet to check the zero call/arrival day(s)
+inspect_all_days <- function(num_days = 23, policy = c("Old", "New")) {
+  for (d in seq_len(num_days)) {
+    # Generate calls for day d
+    calls_today <- generate_daily_calls(d)
+    
+    # Print how many calls were generated
+    cat("\n--- Day", d, "---\n")
+    cat("Number of calls: ", nrow(calls_today), "\n")
+    if (nrow(calls_today) > 0) {
+      # Schedule according to the chosen policy
+      if (policy == "Old") {
+        sched <- schedule_appointments_old(calls_today)
+      } else {
+        sched <- schedule_appointments_new(calls_today)
+      }
+      
+      # Simulate scanning
+      sched_sim <- simulate_day(sched)
+      
+      # Print the final schedule (after simulating actual durations)
+      cat("Final Schedule:\n")
+      print(sched_sim)
+      
+    } else {
+      cat("No arrivals on day", d, "!\n")
+    }
+  }
+}
+
+# Let's say we want to see all days (1..30) for the Old policy:
+inspect_all_days(num_days = 23, policy = "Old")
