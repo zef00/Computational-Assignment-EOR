@@ -518,7 +518,12 @@ cat("Average Squared Bias of Standard Deviation:", avg_bias_sd, "\n")
 # bootstrapped_mean <- 1.83370524886
 
 # TYPE 2: Duration
-# Non-parametric bootstrap sample used for simulation (as defined earlier)
+# sample_mean <- 0.6689911
+# confidence_95_lower <- 0.6453036
+# confidence_95_upper <- 0.6926785
+# standard_deviation <- 0.1868363
+# quantile_2.5 <- 0.3634360
+# quantile_97.5 <- 1.0652090
 
 # TYPE 2: Inter-arrivals (Exponential)
 # bootstrapped_mean <- 0.8667086
@@ -540,107 +545,112 @@ cat("Average Squared Bias of Standard Deviation:", avg_bias_sd, "\n")
 
 ######################### RESULTS FROM PART I ##################################
 set.seed(777)
+
 # TYPE 1
-# Duration
 mu_type1 <- 0.43266080
 sig_type1 <- 0.09777424
-var_type1 <- sig_type1**2
-# Inter-arrivals
-lambda_type1 <- 1.83370524886
-mean_type1 <- 1 / lambda_type1
+var_type1 <- sig_type1^2
+
+# Inter-arrivals (Type1)
+lambda_type1 <- 1.83370524886  # rate
+mean_type1   <- 1 / lambda_type1
 
 # TYPE 2
-# Duration
-# Non-parametric bootstrap sample is used for Type 2 durations
-bootstrap_durations_type2 <- replicate(1000, {
-  sample(Type2$Duration, size = nrow(Type2), replace = TRUE)
-})
+mu_type2 <- 0.6689911
+sig_type2 <- 0.1868363
+var_type2 <- sig_type2^2
 
-# Inter-arrivals
+# Inter-arrivals (Type2)
 lambda_type2 <- 0.8667086
-mean_type2 <- 1 / lambda_type2
+mean_type2   <- 1 / lambda_type2
+
+# COMBINED (TYPE 1 + TYPE 2)
+mu_combined <- 0.5242738
+sig_combined <- 0.1806868
+var_combined <- sig_combined^2
+
+lambda_combined <- 0.3345074
+mean_combined   <- 1 / lambda_combined
 
 # INITIALIZING THE (FIXED) TIME SLOTS
-z_score <- qnorm(0.95) # One-tailed 95th percentile score, i.e., P(Z <= z) = 0.95
-duration_95_type1 <- mu_type1 + z_score * sig_type1 # z_score = (X - mu_type1) / sig_type1
-duration_95_type2 <- max(bootstrap_durations_type2)  # Use bootstrap quantiles
-duration_95_type1_min <- duration_95_type1 * 60 # 35.6 is approximately 35 min
-duration_95_type2_min <- duration_95_type2 * 60 # Example duration quantile
-time_slot_type1 <- 35 / 60
-time_slot_type2 <- 60 / 60
+z_score <- qnorm(0.95) # One-tailed 95th percentile => P(Z <= z) = 0.95
+duration_95_type1 <- mu_type1 + z_score * sig_type1
+duration_95_type2 <- mu_type2 + z_score * sig_type2
+duration_95_type1_min <- duration_95_type1 * 60
+duration_95_type2_min <- duration_95_type2 * 60
+time_slot_type1 <- 35/60
+time_slot_type2 <- 60/60
 
 # DISCRETE EVENT SIMULATION
-# Policy: both
 # Parameters
 num_facilities <- 2
-sim_period <- 23 # Approximately one month
-start_time <- 8.00 # Every day starts at 8.00h
-end_time <- 17.00 # And after 17.00h considered 'overtime'
+sim_period <- 23 # ~ one month without weekend days
+start_time <- 8.00  # working day start
+end_time   <- 17.00 # working day end
 
-# Policy: both
-# Generating patient calls (input: certain day of the 30-day month -> t+1)
+############################## PART II #########################################
+# Generating patient calls
 generate_calls <- function(lambda, day, patient_type) {
   calls <- c()
   time <- start_time
-  while (time < end_time) { # Call center closes at 17.00h
-    inter_arrival <- rexp(1, rate = lambda) # Time between arrivals \sim Exp(\lambda)
-    time <- time + inter_arrival # Update time of the day variable
-    if (time < end_time) { # Add call if happens before closing hour
+  while (time < end_time) {
+    inter_arrival <- rexp(1, rate = lambda)
+    time <- time + inter_arrival
+    if (time < end_time) {
       calls <- c(calls, time)
     }
   }
   data.frame(
-    Day = day,
-    CallTime = calls,
+    Day         = day,
+    CallTime    = calls,
     PatientType = patient_type
   )
 }
 
-# Policy: both
-# Combining daily calls from type I and type II (input: certain day of the 30-day month)
+# Combine Type1 + Type2 calls
 generate_daily_calls <- function(day) {
   calls_type1 <- generate_calls(lambda_type1, day, "Type1")
   calls_type2 <- generate_calls(lambda_type2, day, "Type2")
-  calls <- rbind(calls_type1, calls_type2) # rbind() function adds type II calls below type I calls
-  return(calls)
+  rbind(calls_type1, calls_type2)
 }
 
-# Policy: Old
-# Assigning patients to facilities and time slots
+# Scheduling (Old Policy)
 schedule_appointments_old <- function(calls) {
-  # Order patients w.r.t. their calling times
-  calls <- calls[order(calls$CallTime), ]
-  # Initialize schedules for each facility
-  schedule <- data.frame( # Initializing a data frame for a daily facility schedule
-    PatientID = seq_len(nrow(calls)),
+  if (nrow(calls) == 0) return(data.frame()) # the low prob. case of no calls
+  
+  calls <- calls[order(calls$CallTime), ] # order the calls according to time of calling
+  # creating the schedule with the information columns below
+  schedule <- data.frame(
+    PatientID = seq_len(nrow(calls)), # ID given 1, 2, 3, ...
     PatientType = calls$PatientType,
-    CallDay = calls$Day,
-    ScheduledDay = calls$Day + 1, # Patients have to be scheduled the next day
+    CallDay     = calls$Day,
+    ScheduledDay= calls$Day + 1, # have to be scheduled next day
     ScheduledStart = NA,
-    Facility = NA
+    Facility      = NA
   )
-  # Split patients by type
-  idx_type1 <- which(schedule$PatientType == "Type1")
-  idx_type2 <- which(schedule$PatientType == "Type2")
-  # Assign facilities
-  schedule$Facility[idx_type1] <- 1
-  schedule$Facility[idx_type2] <- 2
-  # For facility 1, schedule Type1 patients sequentially
+  
+  idx_type1 <- which(schedule$PatientType == "Type1") # group of type 1 patients
+  idx_type2 <- which(schedule$PatientType == "Type2") # group of type 2 patients
+  
+  schedule$Facility[idx_type1] <- 1 # assigns to the right facility (old policy)
+  schedule$Facility[idx_type2] <- 2 # ''
+  
+  # allocates the type 1 patients to timeslots according to the chosen timeslot length
   if (length(idx_type1) > 0) {
     start_time_vector <- rep(start_time, length(idx_type1))
     for (i in seq_along(idx_type1)) {
       if (i > 1) {
-        start_time_vector[i] <- start_time_vector[i-1] + time_slot_type1
+        start_time_vector[i] <- start_time_vector[i - 1] + time_slot_type1
       }
       schedule$ScheduledStart[idx_type1[i]] <- start_time_vector[i]
     }
   }
-  # For facility 2, schedule Type2 patients sequentially
+  # allocates the type 2 patients to timeslots according to the chosen timeslot length
   if (length(idx_type2) > 0) {
     start_time_vector <- rep(start_time, length(idx_type2))
     for (i in seq_along(idx_type2)) {
       if (i > 1) {
-        start_time_vector[i] <- start_time_vector[i-1] + time_slot_type2
+        start_time_vector[i] <- start_time_vector[i - 1] + time_slot_type2
       }
       schedule$ScheduledStart[idx_type2[i]] <- start_time_vector[i]
     }
@@ -648,143 +658,156 @@ schedule_appointments_old <- function(calls) {
   schedule
 }
 
-# Policy: New
-# Assigning patients to facilities and time slots
+# Scheduling (New Policy)
 schedule_appointments_new <- function(calls) {
-  calls <- calls[order(calls$CallTime), ]
+  if (nrow(calls) == 0) return(data.frame()) # the low prob. case of no calls
+  
+  calls <- calls[order(calls$CallTime), ] # order the calls according to time of calling
+  # creating the schedule with the information columns below
   schedule <- data.frame(
-    PatientID = seq_len(nrow(calls)),
-    PatientType = calls$PatientType,
-    CallDay = calls$Day,
-    ScheduledDay = calls$Day + 1,
-    ScheduledStart = NA,
-    Facility = NA
+    PatientID     = seq_len(nrow(calls)),
+    PatientType   = calls$PatientType,
+    CallDay       = calls$Day,
+    ScheduledDay  = calls$Day + 1,
+    ScheduledStart= NA,
+    Facility      = NA
   )
   
-  # Track next available time for each facility
   facility_next_time <- rep(start_time, num_facilities)
   
   for (i in seq_len(nrow(schedule))) {
     ptype <- schedule$PatientType[i]
-    # Decide slot length
     slot_len <- if (ptype == "Type1") time_slot_type1 else time_slot_type2
-    
-    # Find facility that is available first
-    f <- which.min(facility_next_time)  # facility index
+    f <- which.min(facility_next_time)
     schedule$Facility[i] <- f
     schedule$ScheduledStart[i] <- facility_next_time[f]
-    
-    # Update that facility's next available time
     facility_next_time[f] <- facility_next_time[f] + slot_len
   }
-  
   schedule
 }
 
-# The rest of the simulation metrics, day simulation, and policy analysis functions remain unchanged.
-
-# Policy: both
-# Simulate scanning process
+# Simulate a day's scanning
 simulate_day <- function(schedule) {
-  # Facility availability tracking
-  facility_end_time <- rep(start_time, num_facilities)
+  if (nrow(schedule) == 0) return(schedule) # the low prob. case of no calls
   
-  # Add columns
+  facility_end_time <- rep(start_time, num_facilities) # since identical facilities end time can be treated as twice as long
+  
   schedule$ActualDuration <- NA
   schedule$ScanStart <- NA
-  schedule$ScanEnd <- NA
-  
-  # Order patients by scheduled start time
+  schedule$ScanEnd   <- NA
   schedule <- schedule[order(schedule$ScheduledStart), ]
-  
-  # Bootstrap index for Type 2 duration
-  bootstrap_index <- sample(1:ncol(bootstrap_durations_type2), size = nrow(schedule), replace = TRUE)
   
   for (i in seq_len(nrow(schedule))) {
     f <- schedule$Facility[i]
     ptype <- schedule$PatientType[i]
-    
-    # Generate random actual duration
     if (ptype == "Type1") {
-      duration <- rnorm(1, mean = mu_type1, sd = sig_type1)  # Keep Type 1 as normal distribution
-    } else if (ptype == "Type2") {
-      # Use the bootstrap sample for Type 2 durations
-      duration <- bootstrap_durations_type2[sample(1:nrow(bootstrap_durations_type2), 1), bootstrap_index[i]]
+      duration <- rnorm(1, mean = mu_type1, sd = sig_type1)
+    } else {
+      duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
     }
-    
-    duration <- max(duration, 0)  # Ensure no negative durations
-    
-    # Actual scan start is the max of scheduled start or facility availability
+    duration <- max(duration, 0)
     scan_start <- max(schedule$ScheduledStart[i], facility_end_time[f])
     schedule$ScanStart[i] <- scan_start
     schedule$ActualDuration[i] <- duration
     schedule$ScanEnd[i] <- scan_start + duration
     
-    # Update facility availability
     facility_end_time[f] <- schedule$ScanEnd[i]
   }
-  
-  # Return in original patient order
   schedule[order(schedule$PatientID), ]
 }
 
-
-# Policy: both
-# Our valuation variables
-calculate_metrics <- function(schedule) {
-  # If schedule is empty, return zeros and logical defaults
-  if (nrow(schedule) == 0) {
-    return(list(
-      Overtime = 0,
-      Utilization = 0,
-      AvgWaiting = 0,
-      FinishedOnTime = TRUE
+# This function calculates per-facility, per-day metrics
+calculate_per_facility_metrics <- function(day_schedule) {
+  # If no patients, return 0-rows
+  if (nrow(day_schedule) == 0) {
+    return(data.frame(
+      Facility             = integer(0),
+      Day                  = integer(0),
+      OvertimeHours        = numeric(0),
+      OvertimeCount        = integer(0),  # 1 if overtime > 0, else 0
+      OvertimeCountExtreme = integer(0),  # 1 if finishing > 19 (chosen)
+      ScanTime            = numeric(0),
+      Capacity            = numeric(0),   # capacity = 9 hours for each facility
+      TotalWait           = numeric(0),
+      NumPatients         = integer(0),
+      WaitExtremes        = integer(0)
     ))
   }
-  facility_finish <- numeric(num_facilities)
-  for (f in seq_len(num_facilities)) {
-    # Rows for this facility
-    idx <- which(schedule$Facility == f)
-    if (length(idx) == 0) {
-      # No patients on this facility => finishing time = 0
-      facility_finish[f] <- start_time  # or 0
+  # We want a row per facility
+  out_list <- list()
+  facilities <- unique(day_schedule$Facility)
+  for (f in facilities) {
+    sched_f <- subset(day_schedule, Facility == f)
+    if (nrow(sched_f) == 0) {
+      # Means no patients for facility f => 0 usage
+      out_list[[f]] <- data.frame(
+        Facility             = f,
+        Day                  = sched_f$ScheduledDay[1], # or NA or the day
+        OvertimeHours        = 0,
+        OvertimeCount        = 0,
+        OvertimeCountExtreme = 0,
+        ScanTime             = 0,
+        Capacity             = (end_time - start_time), 
+        TotalWait            = 0,
+        NumPatients          = 0,
+        WaitExtremes         = 0
+      )
     } else {
-      facility_finish[f] <- max(schedule$ScanEnd[idx])
+      # Compute finishing times
+      last_finish <- max(sched_f$ScanEnd)
+      raw_overtime <- last_finish - 17
+      overtime_hrs <- max(0, raw_overtime)
+      # 1 if overtime>0
+      ot_count <- if (overtime_hrs>0) 1 else 0
+      # 1 if finishing > 19
+      ot_extreme <- if (last_finish>19) 1 else 0
+      
+      # sum of scan times => used for utilization
+      scan_time <- sum(sched_f$ActualDuration)
+      capacity  <- (end_time - start_time)  # 9 hours for the day, per facility
+      
+      # waiting times
+      wtimes <- sched_f$ScanStart - sched_f$ScheduledStart
+      total_wait  <- sum(wtimes)
+      n_patients  <- nrow(sched_f)
+      w_extremes  <- sum(wtimes > (20/60))
+      
+      out_list[[f]] <- data.frame(
+        Facility             = f,
+        Day                  = sched_f$ScheduledDay[1],
+        OvertimeHours        = overtime_hrs,
+        OvertimeCount        = ot_count,
+        OvertimeCountExtreme = ot_extreme,
+        ScanTime             = scan_time,
+        Capacity             = capacity,
+        TotalWait            = total_wait,
+        NumPatients          = n_patients,
+        WaitExtremes         = w_extremes
+      )
     }
   }
-  raw_overtime <- facility_finish - end_time
-  day_overtime <- pmax(0, raw_overtime)  # vector of length num_facilities
-  
-  total_scan_time <- sum(schedule$ActualDuration)
-  total_capacity <- (end_time - start_time) * num_facilities
-  utilization <- total_scan_time / total_capacity
-  
-  waiting_times <- schedule$ScanStart - schedule$ScheduledStart
-  avg_wait <- mean(waiting_times, na.rm = TRUE)
-  
-  # Determine if all scans finished on time
-  finished_on_time <- all(facility_finish <= end_time)
-  
-  # Return list of metrics
-  list(
-    Overtime = sum(day_overtime),
-    Utilization = utilization,
-    AvgWaiting = avg_wait,
-    FinishedOnTime = finished_on_time
-  )
+  do.call(rbind, out_list)
 }
 
-# Policy: both
-# SIMULATING A DAY
-simulate_one_day <- function(day, policy = c("Old", "New")) {
+# simulate_one_day => schedule and metrics per facility
+simulate_one_day <- function(day, policy = c("Old","New")) {
   calls_today <- generate_daily_calls(day)
-  
-  # If no calls, return zero metrics
   if (nrow(calls_today) == 0) {
-    return(list(
-      Overtime = 0, Utilization = 0,
-      AvgWaiting = 0, FinishedOnTime = TRUE
-    ))
+    # Return 2 facility-rows with zero usage, or 0 rows if you prefer
+    # We'll produce 2 rows so the structure is consistent
+    df_empty <- data.frame(
+      Facility             = 1:2,
+      Day                  = day,
+      OvertimeHours        = 0,
+      OvertimeCount        = 0,
+      OvertimeCountExtreme = 0,
+      ScanTime             = 0,
+      Capacity             = (end_time - start_time),
+      TotalWait            = 0,
+      NumPatients          = 0,
+      WaitExtremes         = 0
+    )
+    return(df_empty)
   }
   
   if (policy == "Old") {
@@ -792,136 +815,150 @@ simulate_one_day <- function(day, policy = c("Old", "New")) {
   } else {
     sched <- schedule_appointments_new(calls_today)
   }
-  
-  # Now simulate
   sched_sim <- simulate_day(sched)
   
-  # Return metrics
-  calculate_metrics(sched_sim)
+  # Return a data.frame with 1 row per facility
+  calculate_per_facility_metrics(sched_sim)
 }
 
-# SIMULATING MULPTIPLE DAYS
-run_simulation <- function(num_days = 23, policy = c("Old", "New"), seed = NULL) {
+# run_simulation => combine daily facility-level rows
+run_simulation <- function(num_days = 23, policy=c("Old","New"), seed=NULL) {
   if (!is.null(seed)) set.seed(seed)
   
-  # Collect daily metrics
-  daily_results <- data.frame(
-    Day = integer(),
-    Overtime = numeric(),
-    Utilization = numeric(),
-    AvgWaiting = numeric(),
-    FinishedOnTime = logical(),
-    stringsAsFactors = FALSE
-  )
+  # We'll store each day's facility stats in a big data.frame
+  all_stats <- data.frame()
   
   for (d in seq_len(num_days)) {
-    day_metrics <- simulate_one_day(d, policy = policy)
-    daily_results[d, ] <- c(
-      d,
-      day_metrics$Overtime,
-      day_metrics$Utilization,
-      day_metrics$AvgWaiting,
-      day_metrics$FinishedOnTime
-    )
+    day_stats <- simulate_one_day(d, policy)
+    all_stats <- rbind(all_stats, day_stats)
   }
-  daily_results
+  all_stats
 }
 
-# Example: single run
+# Summarize the entire simulation (single run) => single final metrics per facility
+summarize_simulation <- function(sim_data) {
+  # sim_data has columns: Facility, Day, OvertimeHours, OvertimeCount,
+  #                      OvertimeCountExtreme, ScanTime, Capacity,
+  #                      TotalWait, NumPatients, WaitExtremes
+  
+  # We'll produce a summary for each facility
+  facilities <- unique(sim_data$Facility)
+  
+  results <- list()
+  
+  for (f in facilities) {
+    df_f <- subset(sim_data, Facility == f)
+    n_days <- length(unique(df_f$Day))  # how many days in the simulation
+    
+    # OvertimeCount = how many days had overtime>0 => sum of daily OvertimeCount
+    OvertimeCount <- sum(df_f$OvertimeCount)
+    
+    # OvertimeAverage = average overtime hours per day => sum(OvertimeHours)/n_days
+    OvertimeAverage <- sum(df_f$OvertimeHours) / n_days
+    
+    # OvertimeCountExtremes = how many days finishing time>19 => sum daily OvertimeCountExtreme
+    OvertimeCountExtremes <- sum(df_f$OvertimeCountExtreme)
+    
+    # Utilization => total ScanTime / (Capacity*n_days)
+    total_scan <- sum(df_f$ScanTime)
+    total_capacity <- sum(df_f$Capacity)*1  # = 9 * n_days if consistent
+    Utilization <- total_scan / (9 * n_days)  # or total_scan / total_capacity
+    
+    # WaitingtimeAverage => total waiting / total patients
+    total_wait   <- sum(df_f$TotalWait)
+    total_pats   <- sum(df_f$NumPatients)
+    if (total_pats>0) {
+      WaitingtimeAverage <- total_wait / total_pats
+    } else {
+      WaitingtimeAverage <- 0
+    }
+    
+    # WaitingtimeExtremes => sum of daily WaitExtremes ( # of patients waiting>20m )
+    WaitingtimeExtremes <- sum(df_f$WaitExtremes)
+    
+    results[[paste0("Facility",f)]] <- data.frame(
+      Facility = f,
+      OvertimeCount         = OvertimeCount,
+      OvertimeAverage       = OvertimeAverage,
+      OvertimeCountExtremes = OvertimeCountExtremes,
+      Utilization           = Utilization,
+      WaitingtimeAverage    = WaitingtimeAverage,
+      WaitingtimeExtremes   = WaitingtimeExtremes
+    )
+  }
+  # Combine rows for each facility
+  final_df <- do.call(rbind, results)
+  rownames(final_df) <- NULL
+  final_df
+}
+
+#--------------------------------------------------------------------------------
+# Example single run usage
 results_old <- run_simulation(num_days = 23, policy = "Old", seed = 777)
 results_new <- run_simulation(num_days = 23, policy = "New", seed = 777)
 
-# Summarize
-summary_old <- data.frame(
-  Overtime = mean(results_old$Overtime),
-  Utilization = mean(results_old$Utilization),
-  AvgWaiting = mean(results_old$AvgWaiting),
-  FinishedOnTimePct = mean(results_old$FinishedOnTime) * 100
-)
-summary_new <- data.frame(
-  Overtime = mean(results_new$Overtime),
-  Utilization = mean(results_new$Utilization),
-  AvgWaiting = mean(results_new$AvgWaiting),
-  FinishedOnTimePct = mean(results_new$FinishedOnTime) * 100
-)
+summary_old <- summarize_simulation(results_old)
+summary_new <- summarize_simulation(results_new)
 
-summary_old
-summary_new
+cat("\n--- OLD POLICY (Single Run) ---\n")
+print(summary_old)
+cat("\n--- NEW POLICY (Single Run) ---\n")
+print(summary_new)
 
-# SIMULATING MULTIPLE DAYS AND REPLICATIONS
-run_replications <- function(num_days, policy, R) {
-  metrics_list <- list()
-  for (r in 1:R) {
-    # Each replication can have a different seed or be random
-    daily_res <- run_simulation(num_days, policy)
-    # Store the average over the daily run
-    metrics_list[[r]] <- c(
-      Overtime = mean(daily_res$Overtime),
-      Utilization = mean(daily_res$Utilization),
-      AvgWaiting = mean(daily_res$AvgWaiting),
-      FinishedOnTimePct = mean(daily_res$FinishedOnTime)*100
-    )
+#--------------------------------------------------------------------------------
+# MULTIPLE REPLICATIONS
+run_replications <- function(num_days, policy, R=5) {
+  # We'll run R times, each time storing the summary for each facility
+  # Then we can average the results across replications if we like
+  rep_list <- list()
+  
+  for (r in seq_len(R)) {
+    sim_data <- run_simulation(num_days, policy)
+    sum_data <- summarize_simulation(sim_data)
+    # We'll add a column for replication index
+    sum_data$Replication <- r
+    rep_list[[r]] <- sum_data
   }
-  # Combine
-  mat <- do.call(rbind, metrics_list)
-  # Return data frame of replication results
-  data.frame(mat)
+  # Combine all replication-level summaries
+  big_df <- do.call(rbind, rep_list)
+  rownames(big_df) <- NULL
+  big_df
 }
 
-# Example usage:
-rep_old <- run_replications(23, policy = "Old", R = 4)
-rep_new <- run_replications(23, policy = "New", R = 4)
+# Example: 4 replications
+rep_old <- run_replications(23, "Old", R=4)
+rep_new <- run_replications(23, "New", R=4)
 
-# Summaries
-apply(rep_old, 2, mean)
-apply(rep_new, 2, mean)
+cat("\n--- OLD POLICY (Multiple Replications) ---\n")
+print(rep_old)
+cat("\n--- NEW POLICY (Multiple Replications) ---\n")
+print(rep_new)
 
+# If you want to see the average over all replications for each facility:
+aggregate(. ~ Facility, data=rep_old[ , -ncol(rep_old)], FUN=mean)
+# (That excludes Replication col, or use a more advanced aggregator)
+
+#--------------------------------------------------------------------------------
+# Inspect Single Day
 set.seed(777)
-# Code snippet the look at a day
 policy = "Old"
 inspect_one_day <- function(day, policy) {
-  calls_today <- generate_daily_calls(day)
-  if (policy == "Old") {
-    sched <- schedule_appointments_old(calls_today)
-  } else {
-    sched <- schedule_appointments_new(calls_today)
-  }
-  simulate_day(sched)
+  sched <- simulate_one_day(day, policy)
+  cat("\n--- Sim Stats for Day", day, "Policy:", policy, "---\n")
+  print(sched)
 }
-schedule_day_5 <- inspect_one_day(day = 1, policy)
-print(schedule_day_5)
+inspect_one_day(day = 1, policy)
 
+#--------------------------------------------------------------------------------
+# Print Daily Schedules
 set.seed(777)
-# Code snippet to check the zero call/arrival day(s)
-inspect_all_days <- function(num_days = 23, policy = c("Old", "New")) {
+inspect_all_days <- function(num_days = 23, policy = c("Old","New")) {
   for (d in seq_len(num_days)) {
-    # Generate calls for day d
-    calls_today <- generate_daily_calls(d)
-    
-    # Print how many calls were generated
     cat("\n--- Day", d, "---\n")
-    cat("Number of calls: ", nrow(calls_today), "\n")
-    if (nrow(calls_today) > 0) {
-      # Schedule according to the chosen policy
-      if (policy == "Old") {
-        sched <- schedule_appointments_old(calls_today)
-      } else {
-        sched <- schedule_appointments_new(calls_today)
-      }
-      
-      # Simulate scanning
-      sched_sim <- simulate_day(sched)
-      
-      # Print the final schedule (after simulating actual durations)
-      cat("Final Schedule:\n")
-      print(sched_sim)
-      
-    } else {
-      cat("No arrivals on day", d, "!\n")
-    }
+    day_stats <- simulate_one_day(d, policy)
+    # day_stats is facility-level info, not the patient schedule
+    print(day_stats)
   }
 }
-
-# Let's say we want to see all days (1..30) for the Old policy:
-inspect_all_days(num_days = 23, policy = "Old")
-
+# Example usage
+# inspect_all_days(23, "Old")
