@@ -556,9 +556,12 @@ lambda_type1 <- 1.83370524886  # rate
 mean_type1   <- 1 / lambda_type1
 
 # TYPE 2
-mu_type2 <- 0.6689911
-sig_type2 <- 0.1868363
-var_type2 <- sig_type2^2
+# mu_type2 <- 0.6689911
+# sig_type2 <- 0.1868363
+# var_type2 <- sig_type2^2
+bootstrap_durations_type2 <- replicate(1000, {
+  sample(Type2$Duration, size = nrow(Type2), replace = TRUE)
+})
 
 # Inter-arrivals (Type2)
 # lambda_type2 <- 0.8667086 # exp. distr.
@@ -723,7 +726,8 @@ simulate_day <- function(schedule) {
     if (ptype == "Type1") {
       duration <- rnorm(1, mean = mu_type1, sd = sig_type1)
     } else {
-      duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
+      duration <- sample(bootstrap_durations_type2, size = 1, replace = TRUE)
+      # duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
     }
     duration <- max(duration, 0)
     scan_start <- max(schedule$ScheduledStart[i], facility_end_time[f])
