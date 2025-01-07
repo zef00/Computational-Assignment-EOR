@@ -136,10 +136,10 @@ Type1 <- Type1 %>%
   )
     
 # Remove remaining NA values (the first time of the first day)
-InterArrivalTimes <- Type1$InterArrivalTime[!is.na(Type1$InterArrivalTime)]
+InterArrivalTimes1 <- Type1$InterArrivalTime[!is.na(Type1$InterArrivalTime)]
 
 # Calculate statistical metrics
-mean_interarrival <- mean(InterArrivalTimes)
+mean_interarrival <- mean(InterArrivalTimes1)
 
 # Rate parameter for exponential distribution
 lambda_rate <- 1 / mean_interarrival
@@ -375,132 +375,6 @@ for (i in 1:N){
 avg_bias_mean = mean(bias_mean) #very low so should be good 
 avg_bias_sd = mean(bias_sd)
 
-
-## BOOTSTRAP both patients interarrival times 
-
-# Calculate inter-arrival times for all patients
-ScanRecords <- ScanRecords %>%
-  arrange(Date, Time) %>%  # Ensure records are sorted by date and time
-  group_by(Date) %>%
-  mutate(
-    InterArrivalTime = Time - lag(Time),  # Standard inter-arrival time within the same day
-    FirstOfDay = row_number() == 1        # Flag for the first record of the day
-  ) %>%
-  ungroup()
-
-# Handle first times of each day
-ScanRecords <- ScanRecords %>%
-  mutate(
-    InterArrivalTime = ifelse(
-      FirstOfDay,
-      # If first record of the day, calculate time difference with lagged time + 9 hours (17,00 - 8,00 = 9,00)
-      Time - lag(Time) + 9,
-      InterArrivalTime
-    )
-  )
-
-# Remove remaining NA values (the first time of the first day)
-InterArrivalTimes <- ScanRecords$InterArrivalTime[!is.na(ScanRecords$InterArrivalTime)]
-
-# Plot the Interarrival time 
-ggplot(ScanRecords, aes(x = InterArrivalTime)) +
-  geom_histogram(binwidth = 0.1, fill = "violet", color = "purple", alpha = 0.7) +
-  labs(
-    title = "Histogram of Interarrival times (All Types)",
-    x = "Interarrival times",
-    y = "Frequency"
-  ) 
-
-#Check if we can use parametric bootstrap (doubtful as p-value = 0.06)
-ScanRecords_grouped <- ScanRecords %>%
-  group_by(Date) %>%
-  summarise(count = length(PatientType))
-
-gf <- goodfit(ScanRecords_grouped$count,type= "poisson",method= "ML")
-summary(gf)
-plot(gf,main="Count data vs Poisson distribution")
-
-# Calculate rate parameter for exponential distribution
-lambda <- 1 / mean(InterArrivalTimes)
-
-# Perform bootstrapping based on exponential distribution
-B <- 10000  # Number of bootstrap samples
-bootstrap_means <- numeric(B)
-
-for (b in seq_len(B)) {
-  # Generate bootstrap sample from exponential distribution
-  bootstrap_sample <- rexp(length(InterArrivalTimes), rate = lambda)
-  bootstrap_means[b] <- mean(bootstrap_sample)
-}
-
-# Calculate bootstrapped mean and 95% confidence interval
-bootstrapped_mean <- mean(bootstrap_means)
-ci <- quantile(bootstrap_means, probs = c(0.025, 0.975))
-
-# Print results
-cat("Bootstrapped Mean Inter-Arrival Time (Exponential):", bootstrapped_mean, "\n")
-cat("95% Confidence Interval for Mean Inter-Arrival Time (Exponential):", ci, "\n")
-
-# Plot the bootstrap distribution
-ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) +
-  geom_density(fill = "lightblue", alpha = 0.5) +
-  geom_vline(xintercept = bootstrapped_mean, color = "red", linetype = "dashed") +
-  geom_vline(xintercept = ci[1], color = "blue", linetype = "dotted") +
-  geom_vline(xintercept = ci[2], color = "blue", linetype = "dotted") +
-  labs(title = "Bootstrap Distribution of Mean Inter-Arrival Time (Exponential)",
-       subtitle = paste("95% CI:", round(ci[1], 3), "-", round(ci[2], 3)),
-       x = "Mean Inter-Arrival Time", y = "Density") +
-  theme_minimal()
-
-# Monte Carlo Simulation for Inter-Arrival Times (All Patients)
-N <- 2000  # Number of Monte Carlo iterations
-B <- 500  # Number of bootstrap samples in each Monte Carlo iteration
-
-# Initialize vectors to store biases
-bias_mean <- numeric(N)
-bias_sd <- numeric(N)
-
-# Perform Monte Carlo simulation
-for (i in seq_len(N)) {
-  # Generate synthetic data from exponential distribution
-  mc_interarrival_times <- rexp(length(InterArrivalTimes), rate = lambda)
-  
-  # Calculate true mean and standard deviation of synthetic data
-  true_mean <- mean(mc_interarrival_times)
-  true_sd <- sd(mc_interarrival_times)
-  
-  # Bootstrap the synthetic data
-  bootstrap_means <- numeric(B)
-  bootstrap_sds <- numeric(B)
-  
-  for (b in seq_len(B)) {
-    # Generate bootstrap sample
-    bootstrap_sample <- sample(mc_interarrival_times, replace = TRUE)
-    
-    # Calculate mean and standard deviation of bootstrap sample
-    bootstrap_means[b] <- mean(bootstrap_sample)
-    bootstrap_sds[b] <- sd(bootstrap_sample)
-  }
-  
-  # Calculate average bootstrap mean and standard deviation
-  bootstrap_mean <- mean(bootstrap_means)
-  bootstrap_sd <- mean(bootstrap_sds)
-  
-  # Calculate squared bias for mean and standard deviation
-  bias_mean[i] <- (bootstrap_mean - true_mean)^2
-  bias_sd[i] <- (bootstrap_sd - true_sd)^2
-}
-
-# Calculate average bias for mean and standard deviation
-avg_bias_mean <- mean(bias_mean) # again very low I guess
-avg_bias_sd <- mean(bias_sd)
-
-# Print results
-cat("Monte Carlo Simulation Results:\n")
-cat("Average Squared Bias of Mean:", avg_bias_mean, "\n")
-cat("Average Squared Bias of Standard Deviation:", avg_bias_sd, "\n")
-
-
 ################################################################################
 # PART II
 # Old Policy = Having a facility for each type
@@ -559,9 +433,6 @@ mean_type1   <- 1 / lambda_type1
 # mu_type2 <- 0.6689911
 # sig_type2 <- 0.1868363
 # var_type2 <- sig_type2^2
-bootstrap_durations_type2 <- replicate(1000, {
-  sample(Type2$Duration, size = nrow(Type2), replace = TRUE)
-})
 
 # Inter-arrivals (Type2)
 # lambda_type2 <- 0.8667086 # exp. distr.
@@ -570,22 +441,14 @@ mean_int_type2 <- 0.8663962 # normal distr.
 sig_int_type2 <- 0.3103057
 var_int_type2 <- sig_int_type2^2
 
-# COMBINED (TYPE 1 + TYPE 2)
-mu_combined <- 0.5242738
-sig_combined <- 0.1806868
-var_combined <- sig_combined^2
-
-lambda_combined <- 0.3345074
-mean_combined   <- 1 / lambda_combined
-
 # INITIALIZING THE (FIXED) TIME SLOTS
 z_score <- qnorm(0.95) # One-tailed 95th percentile => P(Z <= z) = 0.95
 duration_95_type1 <- mu_type1 + z_score * sig_type1
 duration_95_type2 <- mu_type2 + z_score * sig_type2
 duration_95_type1_min <- duration_95_type1 * 60
 duration_95_type2_min <- duration_95_type2 * 60
-time_slot_type1 <- 35/60
-time_slot_type2 <- 60/60
+time_slot_type1 <- 30/60
+time_slot_type2 <- 55/60
 
 # DISCRETE EVENT SIMULATION
 # Parameters
@@ -617,7 +480,7 @@ generate_calls_type2 <- function(mean_int_type2, sig_int_type2, day, patient_typ
   calls <- c()
   time <- start_time
   while (time < end_time) {
-    inter_arrival <- rnorm(1, mean_int_type2, sig_int_type2)
+    inter_arrival <- sample(InterArrivalTimes, 1, replace = TRUE)
     time <- time + inter_arrival
     if (time < end_time) {
       calls <- c(calls, time)
@@ -726,7 +589,7 @@ simulate_day <- function(schedule) {
     if (ptype == "Type1") {
       duration <- rnorm(1, mean = mu_type1, sd = sig_type1)
     } else {
-      duration <- sample(bootstrap_durations_type2, size = 1, replace = TRUE)
+      duration <- sample(Type2$Duration, size = 1, replace = TRUE)
       # duration <- rnorm(1, mean = mu_type2, sd = sig_type2)
     }
     duration <- max(duration, 0)
@@ -985,4 +848,4 @@ inspect_all_days <- function(num_days = 23, policy = c("Old","New")) {
   }
 }
 # Example usage
-# inspect_all_days(23, "Old")
+inspect_all_days(23, "Old")
