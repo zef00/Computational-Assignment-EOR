@@ -447,8 +447,8 @@ duration_95_type1 <- mu_type1 + z_score * sig_type1
 duration_95_type2 <- mu_type2 + z_score * sig_type2
 duration_95_type1_min <- duration_95_type1 * 60
 duration_95_type2_min <- duration_95_type2 * 60
-time_slot_type1 <- 30/60
-time_slot_type2 <- 55/60
+time_slot_type1 <- 29/60
+time_slot_type2 <- 48/60
 
 # DISCRETE EVENT SIMULATION
 # Parameters
@@ -657,7 +657,7 @@ calculate_per_facility_metrics <- function(day_schedule) {
       wtimes <- sched_f$ScanStart - sched_f$ScheduledStart
       total_wait  <- sum(wtimes)
       n_patients  <- nrow(sched_f)
-      w_extremes  <- sum(wtimes > (20/60))
+      w_extremes  <- sum(wtimes > (30/60)) # halfuurke
       
       out_list[[f]] <- data.frame(
         Facility             = f,
@@ -794,7 +794,7 @@ print(summary_new)
 
 #--------------------------------------------------------------------------------
 # MULTIPLE REPLICATIONS
-run_replications <- function(num_days, policy, R=5) {
+run_replications <- function(num_days, policy, R) {
   # We'll run R times, each time storing the summary for each facility
   # Then we can average the results across replications if we like
   rep_list <- list()
@@ -813,8 +813,8 @@ run_replications <- function(num_days, policy, R=5) {
 }
 
 # Example: 4 replications
-rep_old <- run_replications(23, "Old", R=4)
-rep_new <- run_replications(23, "New", R=4)
+rep_old <- run_replications(23, "Old", R = 12)
+rep_new <- run_replications(23, "New", R = 12)
 
 cat("\n--- OLD POLICY (Multiple Replications) ---\n")
 print(rep_old)
@@ -823,6 +823,7 @@ print(rep_new)
 
 # If you want to see the average over all replications for each facility:
 aggregate(. ~ Facility, data=rep_old[ , -ncol(rep_old)], FUN=mean)
+aggregate(. ~ Facility, data=rep_new[ , -ncol(rep_new)], FUN=mean)
 # (That excludes Replication col, or use a more advanced aggregator)
 
 #--------------------------------------------------------------------------------
