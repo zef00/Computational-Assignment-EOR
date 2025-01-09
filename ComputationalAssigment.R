@@ -64,17 +64,16 @@ std_dev <- sd(Type1$Duration)
 n <- length(Type1$Duration)
 std_error <- std_dev / sqrt(n)
 
-
 # Quantiles
 duration_quantiles <- quantile(Type1$Duration, probs = c(0.025, 0.975))
 
 # Create a summary table
 duration_type1_summary <- tibble(
   Metric = c(
-    "Sample Mean",
-    "Standard Deviation",
-    "Quantile (2.5%)",
-    "Quantile (97.5%)"
+    "Sample Mean of scanduration Type 1",
+    "Standard Deviation of scanduration Type 1",
+    "Quantile (2.5%) of scanduration Type 1",
+    "Quantile (97.5%) of scanduration Type 1"
   ),
   Value = c(
     mean_duration,
@@ -144,6 +143,16 @@ mean_interarrival <- mean(InterArrivalTimes1)
 # Rate parameter for exponential distribution
 lambda_rate <- 1 / mean_interarrival
 
+interarrivaltime1_summary <- tibble(
+  Metric = c(
+    "Mean Interarrival time Type 1",
+    "lambda"
+  ),
+  Value = c(
+    mean_interarrival,
+    lambda_rate
+  )
+)
 
 ggplot(Type1, aes(x = InterArrivalTime)) +
   geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "darkgreen", alpha = 0.7) +
@@ -156,7 +165,7 @@ ggplot(Type1, aes(x = InterArrivalTime)) +
 
 #Bootstrapping the mean duration for type 2 
 X <- Type2$Duration
-B <- 1000 
+B <- 2000 
 
 n <- length(X)                                          # Sample size
 X.bar <- mean(X)                                        # Sample mean of X
@@ -181,12 +190,12 @@ duration2_quantiles <- c(mean(X.star_low), mean(X.star_high))
 
 duration_type2_summary <- tibble(
   Metric = c(
-    "Sample Mean",
-    "95% Confidence Interval (Lower)",
-    "95% Confidence Interval (Upper)",
-    "Standard Deviation",
-    "Quantile (2.5%)",
-    "Quantile (97.5%)"
+    "Mean scanduration Type 2",
+    "95% Confidence Interval (Lower) of mean scanduration Type 2",
+    "95% Confidence Interval (Upper) of mean scanduration Type 2",
+    "Standard Deviation of scanduration Type 2",
+    "Quantile (2.5%) of scanduration Type 2",
+    "Quantile (97.5%) of scanduration Type 2"
   ),
   Value = c(
     mean_duration_type2,
@@ -269,13 +278,13 @@ ks.test(InterArrivalTimes, "pexp", rate =  1 / mean(InterArrivalTimes))
 qqnorm(InterArrivalTimes) 
 qqline(InterArrivalTimes, col = "red", lwd = 2)
 
-# Perform bootstrapping based on exponential distribution
+# Perform bootstrapping based on normal distribution
 B <- 10000  # Number of bootstrap samples
 bootstrap_means <- numeric(B)
 bootstrap_sd <- numeric(B)
 
 for (b in seq_len(B)) {
-  # Generate bootstrap sample from exponential distribution
+  # Generate bootstrap sample from normal distribution
   bootstrap_sample <- rnorm(length(InterArrivalTimes), mean = mean(InterArrivalTimes), sd = sd(InterArrivalTimes))
   bootstrap_means[b] <- mean(bootstrap_sample)
   bootstrap_sd[b] <- sd(bootstrap_sample)
@@ -285,6 +294,21 @@ for (b in seq_len(B)) {
 bootstrapped_mean <- mean(bootstrap_means)
 bootstrapped_sd <- mean(bootstrap_sd)
 ci <- quantile(bootstrap_means, probs = c(0.025, 0.975))
+
+interarrivaltimes2_summary <- tibble(
+  Metric = c(
+    "Mean Interarrival time Type 2",
+    "95% Confidence Interval (Lower) of mean Interarrival time Type 2",
+    "95% Confidence Interval (Upper) of mean Interarrival time Type 2",
+    "Standard Deviation of Interarrival time Type 2"
+  ),
+  Value = c(
+    bootstrapped_mean,
+    bootstrapped_mean -1.96*bootstrapped_sd/sqrt(length(InterArrivalTimes)),
+    bootstrapped_mean +1.96*bootstrapped_sd/sqrt(length(InterArrivalTimes)),
+    bootstrapped_sd
+  )
+)
 
 # Print results
 cat("Bootstrapped Mean Inter-Arrival Time:", bootstrapped_mean, "\n")
@@ -303,77 +327,11 @@ ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) 
   theme_minimal()
 
 
-# Bootstrap duration for all the patients together
-X <- ScanRecords$Duration
-B <- 1000 
-
-n <- length(X)                                          # Sample size
-X.bar <- mean(X)                                        # Sample mean of X
-St.Dev <- sd(X)                                         # Standard deviation of X
-
-X.star_mean <- rep(NA, n)
-X.star_sd <- rep(NA,n)
-X.star_low <- rep(NA, n)      # 0.025 bound
-X.star_high <- rep(NA, n)     # 0.975 bound
-for (b in 1:B) {
-  J <- sample.int(n, size = n, replace = TRUE)            # Draw the indices J
-  X.star <- X[J]                                      # Draw the bootstrap sample
-  X.star_mean[b] <- mean(X.star) 
-  X.star_sd[b] <- sd(X.star)
-  X.star_high[b] <- quantile(X.star, probs = 0.75)
-  X.star_low[b] <- quantile(X.star, probs = 0.06)
-}
-
-mean_duration_all <- mean(X.star_mean) #these are the variables of interest to us
-SD_duration_all <- mean(X.star_sd)
-duration_all_quantiles <- c(mean(X.star_low), mean(X.star_high))
-
-duration_all_summary <- tibble(
-  Metric = c(
-    "Sample Mean",
-    "95% Confidence Interval (Lower)",
-    "95% Confidence Interval (Upper)",
-    "Standard Deviation",
-    "Quantile (60%)",
-    "Quantile (75%)"
-  ),
-  Value = c(
-    mean_duration_all,
-    mean_duration_all-1.96*SD_duration_all/sqrt(n),
-    mean_duration_all+1.96*SD_duration_all/sqrt(n),
-    SD_duration_all,
-    duration_all_quantiles[1],
-    duration_all_quantiles[2]
-  )
-)
-
-# Monte Carlo Study for the duration bootstrap mean and standard deviation (this can take long)
-N = 2000
-B = 500 
-bias_mean = rep(NA, N)
-bias_sd = rep(NA, N)
-for (i in 1:N){
-  mc_type_duration <- rnorm(length(ScanRecords$Duration),
-                             mean = mean_duration_all,
-                             sd = SD_duration_all)
-  mc_mean <- mean(mc_type_duration)
-  mc_sd <- sd(mc_type_duration)
-  X.star_mean <- rep(NA, length(ScanRecords$Duration))
-  X.star_sd <- rep(NA, length(ScanRecords$Duration))
-  for (b in 1:B){
-    J <- sample.int(length(ScanRecords$Duration), size = length(ScanRecords$Duration), replace = TRUE)
-    X.star <- mc_type_duration[J]                                      # Draw the bootstrap sample
-    X.star_mean[b] <- mean(X.star) 
-    X.star_sd[b] <- sd(X.star)
-  }
-  MCbootstrap_mean <- mean(X.star_mean)
-  MCbootstrap_sd <- mean(X.star_sd)
-  bias_mean[i] <- (MCbootstrap_mean - mc_mean)^2
-  bias_sd[i] <- (MCbootstrap_sd - mc_sd)^2
-  
-}
-avg_bias_mean = mean(bias_mean) #very low so should be good 
-avg_bias_sd = mean(bias_sd)
+# Overview of the parameter tables 
+duration_type1_summary
+interarrivaltime1_summary
+duration_type2_summary
+interarrivaltimes2_summary
 
 ################################################################################
 # PART II
