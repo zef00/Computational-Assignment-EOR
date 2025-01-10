@@ -235,6 +235,16 @@ for (i in 1:N){
 avg_bias_mean = mean(bias_mean) #very low so should be good 
 avg_bias_sd = mean(bias_sd)
 
+bias_duration_type2_summary <- tibble(
+  Metric = c(
+    "Average bias mean duration type 2",
+    "Average bias standard deviation duration type 2"
+  ),
+  Value = c(
+    avg_bias_mean,
+    avg_bias_sd
+  )
+)
 ## BOOTSTRAP patient 2 arrival times with interarival times
 
 # Calculate inter-arrival times
@@ -326,12 +336,54 @@ ggplot(data.frame(bootstrap_means = bootstrap_means), aes(x = bootstrap_means)) 
        x = "Mean Inter-Arrival Time", y = "Density") +
   theme_minimal()
 
+# Monte Carlo Study for the type 2 interarrival times (this can take long)
+N = 2000
+B = 500 
+bias_mean = rep(NA, N)
+bias_sd = rep(NA, N)
+for (i in 1:N){
+  mc_type2_interarrivaltime <- rnorm(length(InterArrivalTimes),
+                             mean = bootstrapped_mean,
+                             sd = bootstrapped_sd)
+  mc_mean <- mean(mc_type2_interarrivaltime)
+  mc_sd <- sd(mc_type2_interarrivaltime)
+  X.star_mean <- rep(NA, length(InterArrivalTimes))
+  X.star_sd <- rep(NA, length(InterArrivalTimes))
+  for (b in 1:B){
+    J <- sample.int(length(InterArrivalTimes), size = length(InterArrivalTimes), replace = TRUE)
+    X.star <- mc_type2_interarrivaltime[J]                                      # Draw the bootstrap sample
+    X.star_mean[b] <- mean(X.star) 
+    X.star_sd[b] <- sd(X.star)
+  }
+  MCbootstrap_mean <- mean(X.star_mean)
+  MCbootstrap_sd <- mean(X.star_sd)
+  bias_mean[i] <- (MCbootstrap_mean - mc_mean)^2
+  bias_sd[i] <- (MCbootstrap_sd - mc_sd)^2
+  
+}
+avg_bias_mean = mean(bias_mean) #very low so should be good 
+avg_bias_sd = mean(bias_sd)
+
+bias_interarrivaltime_type2_summary <- tibble(
+  Metric = c(
+    "Average bias mean interarrival time type 2",
+    "Average bias standard deviation interarrival time type 2"
+  ),
+  Value = c(
+    avg_bias_mean,
+    avg_bias_sd
+  )
+)
 
 # Overview of the parameter tables 
 duration_type1_summary
 interarrivaltime1_summary
 duration_type2_summary
 interarrivaltimes2_summary
+
+# Overview of the bias tables
+bias_duration_type2_summary
+bias_interarrivaltime_type2_summary
 
 ################################################################################
 # PART II
